@@ -1,108 +1,78 @@
+// pages/privacy-policy.js
 import Link from "next/link";
-import TagSEO from "@/components/TagSEO";
-import config from "@/config";
+import Head from "next/head";
+import Header from "@/components/Header";
+import Footer from "@/components/Footer";
 
-// CHATGPT PROMPT TO GENERATE YOUR PRIVACY POLICY — replace with your own data
-
-// 1. Go to https://app.chatgpt.com/
-// 2. Copy paste bellow
-// 3. Replace the data with your own (if needed)
-
-// You are an excellent layer.
-
-// I need your help to write a simple privacy policy for my website. Here is some context:
-// - Website: https://shipfa.st
-// - Name: ShipFast
-// - Description: A JavaScript code boilerplate to help entrepreneurs launch their startups faster
-// - User data collected: name, email and payment information
-// - Non-personal data collection: web cookies
-// - Purpose of Data Collection: Order processing
-// - Data sharing: we do not share the data with any other parties
-// - Children's Privacy: we do not collect any data from children
-// - Updates to the Privacy Policy: users will be updated by email
-// - Contact information: marc@shipfa.st
-
-// Please write a simple privacy policy for my site. Add the current date.  Do not add or explain your reasoning. Answer:
-
-const PrivacyPolicy = () => {
+export default function PrivacyPolicy() {
   return (
-    <div className="max-w-xl mx-auto">
-      <TagSEO
-        title={`Privacy Policy | ${config.appName}`}
-        canonicalSlug="privacy-policy"
-      />
-
-      <div className="p-5">
-        <Link href="/" className="btn btn-ghost">
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            viewBox="0 0 20 20"
-            fill="currentColor"
-            className="w-5 h-5"
-          >
-            <path
-              fillRule="evenodd"
-              d="M15 10a.75.75 0 01-.75.75H7.612l2.158 1.96a.75.75 0 11-1.04 1.08l-3.5-3.25a.75.75 0 010-1.08l3.5-3.25a.75.75 0 111.04 1.08L7.612 9.25h6.638A.75.75 0 0115 10z"
-              clipRule="evenodd"
-            />
-          </svg>{" "}
-          Back
-        </Link>
-        <h1 className="text-3xl font-bold pb-6">Privacy Policy for ShipFast</h1>
-
-        <pre
-          className="leading-relaxed whitespace-pre-wrap"
-          style={{ fontFamily: "sans-serif" }}
-        >
-          {`Last Updated: 2023-08-25
-
-Thank you for visiting ShipFast ("we," "us," or "our"). This Privacy Policy outlines how we collect, use, and protect your personal and non-personal information when you use our website located at https://shipfa.st (the "Website").
-
-By accessing or using the Website, you agree to the terms of this Privacy Policy. If you do not agree with the practices described in this policy, please do not use the Website.
-
-1. Information We Collect
-
-1.1 Personal Data
-
-We collect the following personal information from you:
-
-Name: We collect your name to personalize your experience and communicate with you effectively.
-Email: We collect your email address to send you important information regarding your orders, updates, and communication.
-Payment Information: We collect payment details to process your orders securely. However, we do not store your payment information on our servers. Payments are processed by trusted third-party payment processors.
-
-1.2 Non-Personal Data
-
-We may use web cookies and similar technologies to collect non-personal information such as your IP address, browser type, device information, and browsing patterns. This information helps us to enhance your browsing experience, analyze trends, and improve our services.
-
-2. Purpose of Data Collection
-
-We collect and use your personal data for the sole purpose of order processing. This includes processing your orders, sending order confirmations, providing customer support, and keeping you updated about the status of your orders.
-
-3. Data Sharing
-
-We do not share your personal data with any third parties except as required for order processing (e.g., sharing your information with payment processors). We do not sell, trade, or rent your personal information to others.
-
-4. Children's Privacy
-
-ShipFast is not intended for children under the age of 13. We do not knowingly collect personal information from children. If you are a parent or guardian and believe that your child has provided us with personal information, please contact us at the email address provided below.
-
-5. Updates to the Privacy Policy
-
-We may update this Privacy Policy from time to time to reflect changes in our practices or for other operational, legal, or regulatory reasons. Any updates will be posted on this page, and we may notify you via email about significant changes.
-
-6. Contact Information
-
-If you have any questions, concerns, or requests related to this Privacy Policy, you can contact us at:
-
-Email: marc@shipfa.st
-
-For all other inquiries, please visit our Contact Us page on the Website.
-
-By using ShipFast, you consent to the terms of this Privacy Policy.`}
-        </pre>
-      </div>
-    </div>
+    <>
+      <Head>
+        <title>Privacy Policy | HOPWELL</title>
+      </Head>
+      <Header />
+      <main className="bg-yellow-50 py-16">
+        <div className="max-w-4xl mx-auto px-8">
+          <div className="bg-white rounded-lg shadow-lg p-8">
+            <h1 className="text-3xl font-bold text-indigo-900 mb-8">Privacy Policy</h1>
+            <div className="prose prose-indigo max-w-none">
+              <p className="text-sm text-gray-500 mb-8">Last Updated: {new Date().toLocaleDateString()}</p>
+              
+              <h2 className="text-xl font-semibold mt-8 mb-4">1. Introduction</h2>
+              <p>At HOPWELL, we take your privacy seriously. This Privacy Policy explains how we collect, use, disclose, and safeguard your information when you use our website, mobile application, or any services offered by HOPWELL (collectively, the "Services").</p>
+              
+              <h2 className="text-xl font-semibold mt-8 mb-4">2. Information We Collect</h2>
+              <p><strong>Personal Information:</strong> We collect personal information that you voluntarily provide to us, including but not limited to your name, email address, and payment information when you register for an account or make a purchase.</p>
+              <p><strong>Travel Preferences:</strong> We collect information about your travel preferences, including destinations, dates, accommodation preferences, activities of interest, and budget constraints to provide personalized travel recommendations.</p>
+              <p><strong>Usage Data:</strong> We automatically collect certain information about your device and how you interact with our Services, including your IP address, browser type, referring/exit pages, and operating system.</p>
+              <p><strong>Cookies and Similar Technologies:</strong> We use cookies and similar tracking technologies to track activity on our Services and hold certain information to enhance your experience.</p>
+              
+              <h2 className="text-xl font-semibold mt-8 mb-4">3. How We Use Your Information</h2>
+              <p>We use the information we collect to:</p>
+              <ul className="list-disc pl-6 mb-4">
+                <li>Provide, maintain, and improve our Services</li>
+                <li>Create personalized travel itineraries based on your preferences</li>
+                <li>Process transactions and send related information</li>
+                <li>Respond to your comments, questions, and requests</li>
+                <li>Send you technical notices, updates, security alerts, and support messages</li>
+                <li>Monitor and analyze trends, usage, and activities in connection with our Services</li>
+                <li>Detect, prevent, and address fraud and other illegal activities</li>
+              </ul>
+              
+              <h2 className="text-xl font-semibold mt-8 mb-4">4. Sharing Your Information</h2>
+              <p>We may share your information with:</p>
+              <ul className="list-disc pl-6 mb-4">
+                <li>Service providers who perform services on our behalf</li>
+                <li>Travel partners when necessary to fulfill your booking requests</li>
+                <li>In response to a request for information if we believe disclosure is in accordance with, or required by, any applicable law, regulation, or legal process</li>
+                <li>If we believe your actions are inconsistent with our user agreements or policies, or to protect the rights, property, and safety of HOPWELL or others</li>
+              </ul>
+              
+              <h2 className="text-xl font-semibold mt-8 mb-4">5. Data Retention</h2>
+              <p>We will retain your information for as long as your account is active or as needed to provide you with our Services. We will also retain and use your information as necessary to comply with our legal obligations, resolve disputes, and enforce our agreements.</p>
+              
+              <h2 className="text-xl font-semibold mt-8 mb-4">6. Your Rights</h2>
+              <p>You have the right to access, correct, or delete your personal information. You can do this by accessing your account settings or by contacting us directly.</p>
+              
+              <h2 className="text-xl font-semibold mt-8 mb-4">7. Children's Privacy</h2>
+              <p>Our Services are not intended for individuals under the age of 13. We do not knowingly collect personal information from children under 13. If we learn we have collected or received personal information from a child under 13, we will delete that information.</p>
+              
+              <h2 className="text-xl font-semibold mt-8 mb-4">8. Changes to This Privacy Policy</h2>
+              <p>We may update our Privacy Policy from time to time. We will notify you of any changes by posting the new Privacy Policy on this page and updating the "Last Updated" date at the top of this Privacy Policy.</p>
+              
+              <h2 className="text-xl font-semibold mt-8 mb-4">9. Contact Us</h2>
+              <p>If you have any questions about this Privacy Policy, please contact us at privacy@hopwell.ai.</p>
+            </div>
+            
+            <div className="mt-8">
+              <Link href="/" className="text-indigo-600 hover:text-indigo-800">
+                ← Back to home
+              </Link>
+            </div>
+          </div>
+        </div>
+      </main>
+      <Footer />
+    </>
   );
-};
-
-export default PrivacyPolicy;
+}

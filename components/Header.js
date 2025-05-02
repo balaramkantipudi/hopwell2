@@ -5,35 +5,29 @@ import Image from "next/image";
 import logo from "@/public/logo.png";
 import config from "@/config";
 
-const link = [
+const links = [
   {
     href: "#about",
     label: "About",
   },
   {
-    href: "#planmytrip",
-    label: "Plan my trip",
-  },
-  {
-    href: "/auth/signin",
-    label: "Account",
+    href: "#globe",
+    label: "Spin the Globe",
   },
 ];
 
 const Header = () => {
   const router = useRouter();
+  const [isOpen, setIsOpen] = useState(false);
 
   const handleLinkClick = (e, href) => {
-    if (href.startsWith('#')) {
-      e.preventDefault();
-      const sectionId = href.substring(1);
-      const element = document.getElementById(sectionId);
-      
-      if (element) {
-        element.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      }
-    } else {
-      router.push(href);
+    e.preventDefault();
+    const sectionId = href.substring(1);
+    const element = document.getElementById(sectionId);
+
+    if (element) {
+      element.scrollIntoView({ behavior: "smooth", block: "start" });
+      setIsOpen(false);
     }
   };
 
@@ -41,11 +35,8 @@ const Header = () => {
     <header className="bg-yellow-50">
       <nav className="container flex items-center justify-between px-8 py-4 mx-auto">
         {/* Logo */}
-        <div className="flex flex-1">
-          <Link
-            className="flex items-center gap-2 shrink-0"
-            href="/"
-          >
+        <div className="flex lg:flex-1">
+          <Link href="/" className="flex items-center gap-2 shrink-0">
             <Image
               src={logo}
               alt={`${config.appName} logo`}
@@ -54,31 +45,114 @@ const Header = () => {
             />
           </Link>
         </div>
-        
-        {/* Navigation links
-        <div className="flex justify-center gap-12 items-center">
+
+        {/* Mobile menu button */}
+        <div className="flex lg:hidden">
+          <button
+            type="button"
+            className="-m-2.5 inline-flex items-center justify-center rounded-md p-2.5"
+            onClick={() => setIsOpen(true)}
+          >
+            <span className="sr-only">Open main menu</span>
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              fill="none"
+              viewBox="0 0 24 24"
+              strokeWidth={1.5}
+              stroke="currentColor"
+              className="w-6 h-6 text-base-content"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 domingo5.25h16.5"
+              />
+            </svg>
+          </button>
+        </div>
+
+        {/* Desktop navigation links */}
+        <div className="hidden lg:flex lg:justify-center lg:gap-12 lg:items-center">
           {links.map((link) => (
-            
+            <Link
               key={link.href}
               href={link.href}
-              className="link link-hover"
+              className="link no-underline hover:no-underline header-link" 
+              title={link.label}
               onClick={(e) => handleLinkClick(e, link.href)}
             >
               {link.label}
-            </a>
+            </Link>
           ))}
-        </div> */}
+        </div>
 
-        {/* CTA button */}
-        <div className="flex justify-end flex-1">
-          <button 
-            className="btn btn-primary bg-indigo-900"
-            onClick={() => router.push('/auth/signin')}
-          >
-            Start my plan
-          </button>
+        {/* Desktop CTA button */}
+        <div className="hidden lg:flex lg:justify-end lg:flex-1">
+        <button className="btn btn-primary bg-indigo-900"
+          onClick={() => router.push('/auth/signin')}>
+          Login  </button>
         </div>
       </nav>
+
+      {/* Mobile menu */}
+      <div className={`relative z-50 ${isOpen ? "" : "hidden"}`}>
+        <div className="fixed inset-y-0 right-0 z-10 w-full px-8 py-4 overflow-y-auto bg-blue-900 sm:max-w-sm sm:ring-1 sm:ring-neutral/10 transform origin-right transition ease-in-out duration-300">
+          {/* Mobile menu header */}
+          <div className="flex items-center justify-between">
+            <Link href="/" className="flex items-center gap-2 shrink-0">
+              <Image
+                src={logo}
+                alt={`${config.appName} logo`}
+                className="w-8"
+                priority={true}
+              />
+              <span className="font-bold text-lg text-white">
+                {config.appName}
+              </span>
+            </Link>
+            <button
+              type="button"
+              className="text-white"
+              onClick={() => setIsOpen(false)}
+            >
+              <span className="sr-only">Close menu</span>
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                fill="none"
+                viewBox="0 0 24 24"
+                strokeWidth={1.5}
+                stroke="currentColor"
+                className="w-6 h-6"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="M6 18L18 6M6 6l12 12"
+                />
+              </svg>
+            </button>
+          </div>
+
+          {/* Mobile menu links */}
+          <div className="mt-6">
+            <div className="flex flex-col gap-y-4 items-start">
+              {links.map((link) => (
+                <Link
+                  key={link.href}
+                  href={link.href}
+                  className="text-white hover:text-yellow-100"
+                  onClick={(e) => handleLinkClick(e, link.href)}
+                >
+                  {link.label}
+                </Link>
+              ))}
+            <button className="btn btn-primary bg-indigo-900"
+                  onClick={() => router.push('/auth/signin')}>
+                Login  </button>
+            </div>
+          </div>
+        </div>
+      </div>
     </header>
   );
 };

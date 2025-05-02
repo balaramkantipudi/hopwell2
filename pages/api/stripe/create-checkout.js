@@ -1,5 +1,6 @@
+// pages/api/stripe/create-checkout.js
 import { getServerSession } from "next-auth/next";
-import { authOptions } from "../auth/[...nextauth]";
+import { authOptions } from "../auth/[...nextauth]"; // Updated import
 import { createCheckout } from "@/libs/stripe";
 import connectMongo from "@/libs/mongoose";
 import User from "@/models/User";
@@ -8,7 +9,7 @@ import User from "@/models/User";
 // It's called by the <ButtonCheckout /> component
 // It forces user to be authenticated but you can remove all the auth logic if you want (if (session) {} | if (!user) {}, etc...)
 export default async function handler(req, res) {
-  const session = await getServerSession(req, res, authOptions);
+  const session = await getServerSession(req, res, authOptions); // Updated to use authOptions
 
   if (session) {
     await connectMongo();

@@ -21,7 +21,9 @@ progress::-webkit-progress-value {
     @apply !capitalize;
   }
 }
-
+.link:hover {
+  text-decoration: none !important;
+}
 
 .masonry-grid {
   column-count: 3;
