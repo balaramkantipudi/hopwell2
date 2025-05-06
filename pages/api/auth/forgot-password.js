@@ -1,8 +1,7 @@
 // pages/api/auth/forgot-password.js
-import connectMongo from '@/libs/mongoose';
-import User from '@/models/User';
-import crypto from 'crypto';
-import { sendEmail } from '@/libs/mailgun';
+import { supabase } from '@/libs/supabase'
+import crypto from 'crypto'
+import { sendEmail } from '@/libs/mailgun'
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
@@ -16,30 +15,38 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: 'Email is required' });
     }
 
-    await connectMongo();
-
-    // Find the user
-    const user = await User.findOne({ email });
+    // Check if user exists
+    const { data: user, error: userError } = await supabase.auth.admin.getUserByEmail(email);
 
     // Don't reveal that the user doesn't exist
-    if (!user) {
+    if (userError) {
       return res.status(200).json({ message: 'If an account with that email exists, password reset instructions have been sent' });
     }
 
     // Generate reset token
     const resetToken = crypto.randomBytes(32).toString('hex');
-    const resetTokenExpiry = Date.now() + 3600000; // 1 hour
+    const resetTokenExpiry = new Date(Date.now() + 3600000); // 1 hour
 
-    // Save to user
-    user.resetToken = resetToken;
-    user.resetTokenExpiry = resetTokenExpiry;
-    await user.save();
+    // Save to password_reset_tokens table
+    const { error: tokenError } = await supabase
+      .from('password_reset_tokens')
+      .insert([{
+        user_id: user.id,
+        email: email,
+        token: resetToken,
+        expires_at: resetTokenExpiry.toISOString()
+      }]);
+
+    if (tokenError) {
+      console.error('Token storage error:', tokenError);
+      return res.status(500).json({ error: 'Server error' });
+    }
 
     // Send email
     const resetUrl = `${process.env.NEXTAUTH_URL}/auth/reset-password?token=${resetToken}`;
     
     await sendEmail(
-      user.email,
+      email,
       'Reset your HOPWELL password',
       `You requested a password reset. Please go to this link to reset your password: ${resetUrl}`,
       `

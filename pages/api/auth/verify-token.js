@@ -1,6 +1,5 @@
 // pages/api/auth/verify-token.js
-import connectMongo from '@/libs/mongoose';
-import User from '@/models/User';
+import { supabase } from '@/libs/supabase'
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
@@ -14,15 +13,15 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: 'Token is required' });
     }
 
-    await connectMongo();
+    // Check if token exists in Supabase
+    const { data, error } = await supabase
+      .from('password_reset_tokens')
+      .select('*')
+      .eq('token', token)
+      .gt('expires_at', new Date().toISOString())
+      .single();
 
-    // Find the user with this token and ensure it's not expired
-    const user = await User.findOne({
-      resetToken: token,
-      resetTokenExpiry: { $gt: Date.now() }
-    });
-
-    if (!user) {
+    if (error || !data) {
       return res.status(400).json({ error: 'Invalid or expired token' });
     }
 

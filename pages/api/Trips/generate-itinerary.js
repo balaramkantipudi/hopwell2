@@ -1,10 +1,6 @@
-// pages/api/trips/generate-itinerary.js
-import connectMongo from '@/libs/mongoose';
-import Trip from '@/models/Trip';
-import User from '@/models/User';
-import { getServerSession } from "next-auth/next";
-import { authOptions } from "../auth/[...nextauth]";
-import { GoogleGenerativeAI } from '@google/generative-ai';
+// pages/api/Trips/generate-itinerary.js
+import { supabase } from '@/libs/supabase'
+import { GoogleGenerativeAI } from '@google/generative-ai'
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
@@ -12,31 +8,33 @@ export default async function handler(req, res) {
   }
 
   try {
-    const session = await getServerSession(req, res, authOptions);
+    // Get user from Supabase session
+    const { data: { session }, error: authError } = await supabase.auth.getSession();
     
-    if (!session) {
+    if (authError || !session) {
       return res.status(401).json({ error: 'Not authenticated' });
     }
-
-    await connectMongo();
     
+    const userId = session.user.id;
     const { tripId } = req.body;
     
     if (!tripId) {
       return res.status(400).json({ error: 'Trip ID is required' });
     }
 
-    // Find the trip
-    const trip = await Trip.findOne({ 
-      _id: tripId,
-      userId: session.user.id
-    });
+    // Find the trip in Supabase
+    const { data: trip, error: tripError } = await supabase
+      .from('trips')
+      .select('*')
+      .eq('id', tripId)
+      .eq('user_id', userId)
+      .single();
 
-    if (!trip) {
+    if (tripError || !trip) {
       return res.status(404).json({ error: 'Trip not found' });
     }
 
-    // Initialize Gemini
+    // Initialize Gemini (rest of your code remains the same)
     const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
     const model = genAI.getGenerativeModel({ model: 'gemini-pro' });
 
@@ -143,7 +141,6 @@ export default async function handler(req, res) {
     const response = await result.response;
     const text = response.text();
     
-    // In your itinerary generation API (pages/api/trips/generate-itinerary.js)
 // Add a function to generate affiliate links:
 
 const generateAffiliateLinks = (data) => {
@@ -219,42 +216,29 @@ const generateAffiliateLinks = (data) => {
   // After generating the itinerary with AI
   const enhancedItinerary = generateAffiliateLinks(itineraryData);
   
-  // Update the trip with affiliate-enhanced itinerary
-  trip.itinerary = enhancedItinerary.itinerary;
-  trip.accommodations = enhancedItinerary.accommodations;
-  trip.transportation = enhancedItinerary.transportation;
-  
-    try {
-      // Extract JSON from response
-      const jsonMatch = text.match(/\{[\s\S]*\}/);
-      if (!jsonMatch) {
-        throw new Error('No valid JSON found in response');
-      }
-      
-      const itineraryData = JSON.parse(jsonMatch[0]);
-      
-      // Update trip with generated itinerary
-      trip.itinerary = itineraryData.itinerary;
-      trip.accommodations = itineraryData.accommodations;
-      trip.transportation = itineraryData.transportation;
-      trip.totalCost = itineraryData.totalCost;
-      trip.status = 'generated';
-      
-      await trip.save();
-      
-      return res.status(200).json({
-        success: true,
-        message: 'Itinerary generated successfully',
-        trip: trip
-      });
-    } catch (parseError) {
-      console.error('Error parsing AI response:', parseError);
-      return res.status(500).json({ 
-        error: 'Failed to parse AI response',
-        rawResponse: text
-      });
+  const { data: updatedTrip, error: updateError } = await supabase
+      .from('trips')
+      .update({
+        itinerary: itineraryData.itinerary,
+        accommodations: itineraryData.accommodations,
+        transportation: itineraryData.transportation,
+        total_cost: itineraryData.totalCost,
+        status: 'generated',
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', tripId)
+      .select();
+    
+    if (updateError) {
+      return res.status(500).json({ error: 'Failed to update trip' });
     }
-  } catch (error) {
+    
+    return res.status(200).json({
+      success: true,
+      message: 'Itinerary generated successfully',
+      trip: updatedTrip[0]
+    });
+  }catch (error) {
     console.error('Generate itinerary error:', error);
     return res.status(500).json({ error: 'Server error' });
   }

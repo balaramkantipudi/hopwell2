@@ -1,12 +1,7 @@
-import connectMongo from "@/libs/mongoose";
-import Lead from "@/models/Lead";
+// pages/api/lead/index.js
+import { supabase } from '../../../libs/supabase'  // Use relative path
 
-// This route is used to store the leads that are generated from the landing page.
-// The API call is initiated by <ButtonLead /> component
-// Duplicate emails just return 200 OK
 export default async function handler(req, res) {
-  await connectMongo();
-
   const { method, body } = req;
 
   switch (method) {
@@ -16,13 +11,22 @@ export default async function handler(req, res) {
       }
 
       try {
-        const lead = await Lead.findOne({ email: body.email });
+        // Store lead in Supabase
+        const { error } = await supabase
+          .from('leads')
+          .upsert([
+            { 
+              email: body.email,
+              created_at: new Date().toISOString() 
+            }
+          ], 
+          { 
+            onConflict: 'email',
+            ignoreDuplicates: true
+          });
 
-        if (!lead) {
-          await Lead.create({ email: body.email });
-
-          // Here you can add your own logic
-          // For instance, sending a welcome email (use the the sendEmail helper function from /libs/mailgun)
+        if (error) {
+          throw error;
         }
 
         return res.status(200).json({});
@@ -33,6 +37,6 @@ export default async function handler(req, res) {
     }
 
     default:
-      res.status(404).json({ error: "Unknow request type" });
+      res.status(404).json({ error: "Unknown request type" });
   }
 }

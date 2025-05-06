@@ -1,9 +1,9 @@
+// pages/api/webhook/stripe.js
 import Stripe from "stripe";
 import { buffer } from "micro";
-import connectMongo from "@/libs/mongoose";
+import { supabase } from '../../../libs/supabase'  // Use relative path
 import { sendEmail } from "@/libs/mailgun";
 import configFile from "@/config";
-import User from "@/models/User";
 import { findCheckoutSession } from "@/libs/stripe";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
@@ -16,8 +16,6 @@ export const config = {
 
 export default async function handler(req, res) {
   const { method } = req;
-
-  await connectMongo();
 
   switch (method) {
     case "POST": {
@@ -49,8 +47,7 @@ export default async function handler(req, res) {
       try {
         switch (eventType) {
           case "checkout.session.completed": {
-            // First payment is successful and the subscription is created | or the subscription was canceled so create new one
-
+            // First payment is successful and the subscription is created
             const session = await findCheckoutSession(data.object.id);
 
             const customerId = session?.customer;
@@ -64,65 +61,42 @@ export default async function handler(req, res) {
 
             const customer = await stripe.customers.retrieve(customerId);
 
-            let user;
-
-            // Get or create the user. userId is normally pass in the checkout session (clientReferenceID) to identify the user when we get the webhook event
+            // Update the user in Supabase
             if (userId) {
-              user = await User.findById(userId);
+              // Update user metadata
+              await supabase
+                .from('profiles')
+                .update({
+                  stripe_customer_id: customerId,
+                  stripe_price_id: priceId,
+                  updated_at: new Date().toISOString()
+                })
+                .eq('id', userId);
+              
             } else if (customer.email) {
-              user = await User.findOne({ email: customer.email });
+              // Try to find user by email
+              const { data: userByEmail } = await supabase
+                .from('profiles')
+                .select('id')
+                .eq('email', customer.email)
+                .single();
 
-              if (!user) {
-                user = await User.create({
-                  email: customer.email,
-                  name: customer.name,
-                });
-
-                await user.save();
+              if (userByEmail) {
+                await supabase
+                  .from('profiles')
+                  .update({
+                    stripe_customer_id: customerId,
+                    stripe_price_id: priceId,
+                    updated_at: new Date().toISOString()
+                  })
+                  .eq('id', userByEmail.id);
               }
-            } else {
-              console.error("No user found");
-              throw new Error("No user found");
             }
 
-            // update user data (for instance add credits)
-            user.priceId = priceId;
-            user.customerId = customerId;
-            await user.save();
-
-            // Extra: send email with user link, product page, etc...
-            // try {
-            //   await sendEmail(...);
-            // } catch (e) {
-            //   console.error("Email issue:" + e?.message);
-            // }
-
             break;
           }
-          case "checkout.session.expired": {
-            // User didn't complete the transaction
-            // Can send an email to the user to remind him to complete the transaction, for instance
-            break;
-          }
-
-          case "customer.subscription.updated": {
-            // The customer might have changed the plan.
-
-            const subscription = await stripe.subscriptions.retrieve(
-              data.object.id
-            );
-            const planId = subscription?.items?.data[0]?.price?.id;
-            // Do any operation here
-            break;
-          }
-
-          case "customer.subscription.deleted": {
-            // The customer stopped the subscription.
-            break;
-          }
-
-          default:
-          // Unhandled event type
+          
+          // Handle other Stripe webhook events...
         }
       } catch (e) {
         console.error("stripe error: ", e.message);

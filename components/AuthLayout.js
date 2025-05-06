@@ -1,21 +1,15 @@
 // components/AuthLayout.js
 import { useRouter } from 'next/router';
 import { useState, useEffect } from 'react';
-import { useSession, signOut } from 'next-auth/react';
+import { useAuth } from './AuthContext'; // Use our custom Supabase auth hook
 import Link from 'next/link';
 import Image from 'next/image';
 import logo from '@/public/logo.png';
 
 export default function AuthLayout({ children }) {
   const router = useRouter();
-  const { data: session, status } = useSession();
-
-  // If not authenticated, redirect to login
-  if (status === "unauthenticated") {
-    router.push('/auth/signin');
-    return null;
-  }
-
+  const { user, status } = useAuth(); // Use our Supabase auth hook
+  
   // If still loading, show a loading screen
   if (status === "loading") {
     return (
@@ -23,6 +17,12 @@ export default function AuthLayout({ children }) {
         <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-indigo-900"></div>
       </div>
     );
+  }
+
+  // If not authenticated, redirect to login
+  if (status === "unauthenticated") {
+    router.push('/auth/signin');
+    return null;
   }
 
   return (
@@ -50,7 +50,13 @@ export default function AuthLayout({ children }) {
             </div>
             <div className="flex items-center">
               <button
-                onClick={() => signOut({ callbackUrl: '/' })}
+                onClick={() => {
+                  // Use Supabase signOut method from our auth context
+                  const { supabase } = require('@/libs/supabase');
+                  supabase.auth.signOut().then(() => {
+                    router.push('/');
+                  });
+                }}
                 className="ml-3 inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-indigo-700 bg-indigo-100 hover:bg-indigo-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
               >
                 Sign out

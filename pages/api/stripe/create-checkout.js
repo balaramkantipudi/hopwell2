@@ -1,61 +1,56 @@
 // pages/api/stripe/create-checkout.js
-import { getServerSession } from "next-auth/next";
-import { authOptions } from "../auth/[...nextauth]"; // Updated import
+import { supabase } from '../../../libs/supabase'  // Use relative path
 import { createCheckout } from "@/libs/stripe";
-import connectMongo from "@/libs/mongoose";
-import User from "@/models/User";
 
-// This function is used to create a Stripe Checkout Session
-// It's called by the <ButtonCheckout /> component
-// It forces user to be authenticated but you can remove all the auth logic if you want (if (session) {} | if (!user) {}, etc...)
 export default async function handler(req, res) {
-  const session = await getServerSession(req, res, authOptions); // Updated to use authOptions
+  // Get Supabase session
+  const { data: { session }, error: authError } = await supabase.auth.getSession();
 
-  if (session) {
-    await connectMongo();
+  if (authError || !session) {
+    return res.status(401).json({ error: 'Not authenticated' });
+  }
 
-    const { id } = session.user;
-    const { method, body } = req;
+  const { method, body } = req;
+  const userId = session.user.id;
 
-    switch (method) {
-      case "POST": {
-        if (!body.priceId) {
-          return res.status(404).send({ error: "Need a Price ID for Stripe" });
-        } else if (!body.successUrl || !body.cancelUrl) {
-          return res
-            .status(404)
-            .send({ error: "Need valid success/failure URL to return to" });
-        }
-
-        try {
-          const user = await User.findById(id);
-
-          if (!user) {
-            return res.status(404).json({ error: "User doesnt exists" });
-          }
-
-          const { coupon, successUrl, cancelUrl } = body;
-
-          const stripeSessionURL = await createCheckout({
-            successUrl,
-            cancelUrl,
-            clientReferenceID: user._id.toString(),
-            priceId: body.priceId,
-            coupon,
-          });
-
-          return res.status(200).json({ url: stripeSessionURL });
-        } catch (e) {
-          console.error(e);
-          return res.status(500).json({ error: e?.message });
-        }
+  switch (method) {
+    case "POST": {
+      if (!body.priceId) {
+        return res.status(404).send({ error: "Need a Price ID for Stripe" });
+      } else if (!body.successUrl || !body.cancelUrl) {
+        return res.status(404).send({ error: "Need valid success/failure URL to return to" });
       }
 
-      default:
-        res.status(404).json({ error: "Unknow request type" });
+      try {
+        // Get user profile from Supabase
+        const { data: user, error: userError } = await supabase
+          .from('profiles')
+          .select('*')
+          .eq('id', userId)
+          .single();
+
+        if (userError) {
+          return res.status(404).json({ error: "User doesn't exist" });
+        }
+
+        const { coupon, successUrl, cancelUrl } = body;
+
+        const stripeSessionURL = await createCheckout({
+          successUrl,
+          cancelUrl,
+          clientReferenceID: userId,
+          priceId: body.priceId,
+          coupon,
+        });
+
+        return res.status(200).json({ url: stripeSessionURL });
+      } catch (e) {
+        console.error(e);
+        return res.status(500).json({ error: e?.message });
+      }
     }
-  } else {
-    // Not Signed in
-    res.status(401).end();
+
+    default:
+      res.status(404).json({ error: "Unknown request type" });
   }
 }

@@ -48,12 +48,12 @@
 
 
 import { useRouter } from 'next/router';
-import { useSession } from 'next-auth/react';
+import { useAuth } from './AuthContext';
 import Image from "next/image";
 
 const CTA = ({ setIsAuthModalOpen }) => {
   const router = useRouter();
-  const { status } = useSession();
+  const { status } = useAuth();
 
   const handlePlanTrip = () => {
     if (status === "authenticated") {

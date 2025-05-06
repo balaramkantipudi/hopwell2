@@ -63,7 +63,7 @@ export default function TripPlanner() {
                 value={formData.destination}
                 onChange={handleChange}
                 placeholder="City, Country or 'Not Sure'"
-                className="w-full p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                className="w-full p-3 border border-gray-300 bg-white rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
               />
             </div>
             
@@ -75,7 +75,7 @@ export default function TripPlanner() {
                 value={formData.origin}
                 onChange={handleChange}
                 placeholder="Where are you starting from?"
-                className="w-full p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                className="w-full p-3 border border-gray-300 bg-white rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
               />
             </div>
             
@@ -85,7 +85,7 @@ export default function TripPlanner() {
                 name="transportMode"
                 value={formData.transportMode}
                 onChange={handleChange}
-                className="w-full p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                className="w-full p-3 border border-gray-300 bg-white rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
               >
                 <option value="">Select transportation</option>
                 <option value="air">Airways</option>
@@ -103,7 +103,7 @@ export default function TripPlanner() {
                   name="startDate"
                   value={formData.startDate}
                   onChange={handleChange}
-                  className="w-full p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  className="w-full p-3 border border-gray-300 bg-white rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
                 />
               </div>
               <div>
@@ -113,7 +113,7 @@ export default function TripPlanner() {
                   name="endDate"
                   value={formData.endDate}
                   onChange={handleChange}
-                  className="w-full p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  className="w-full p-3 border border-gray-300 bg-white rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
                 />
               </div>
             </div>
@@ -140,7 +140,7 @@ export default function TripPlanner() {
                 name="hotelStyle"
                 value={formData.hotelStyle}
                 onChange={handleChange}
-                className="w-full p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                className="w-full p-3 border border-gray-300 bg-white rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
               >
                 <option value="">Select your preference</option>
                 <option value="ultraLuxury">Ultra Luxury</option>
@@ -159,7 +159,7 @@ export default function TripPlanner() {
                 value={formData.cuisine}
                 onChange={handleChange}
                 placeholder="What cuisines do you enjoy?"
-                className="w-full p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                className="w-full p-3 border border-gray-300 bg-white rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
               />
             </div>
             
@@ -169,7 +169,7 @@ export default function TripPlanner() {
                 name="theme"
                 value={formData.theme}
                 onChange={handleChange}
-                className="w-full p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                className="w-full p-3 border border-gray-300 bg-white rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
               >
                 <option value="">Select a theme</option>
                 <option value="relaxation">Relaxation & Vibe</option>
@@ -215,7 +215,7 @@ export default function TripPlanner() {
                 name="groupType"
                 value={formData.groupType}
                 onChange={handleChange}
-                className="w-full p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                className="w-full p-3 border border-gray-300 bg-white rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
               >
                 <option value="">Select group type</option>
                 <option value="couple">Couple</option>
@@ -234,7 +234,7 @@ export default function TripPlanner() {
                 value={formData.groupCount}
                 onChange={handleChange}
                 min="1"
-                className="w-full p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                className="w-full p-3 border border-gray-300 bg-white rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
               />
             </div>
             
@@ -268,7 +268,7 @@ export default function TripPlanner() {
                 value={formData.budget}
                 onChange={handleChange}
                 placeholder="Enter amount in USD"
-                className="w-full p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                className="w-full p-3 border border-gray-300 bg-white rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
               />
             </div>
             
@@ -278,7 +278,7 @@ export default function TripPlanner() {
                 name="priority"
                 value={formData.priority}
                 onChange={handleChange}
-                className="w-full p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                className="w-full p-3 border border-gray-300 bg-white rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
               >
                 <option value="">Select your top priority</option>
                 <option value="budget">Budget</option>

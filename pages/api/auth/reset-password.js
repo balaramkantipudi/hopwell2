@@ -1,7 +1,5 @@
 // pages/api/auth/reset-password.js
-import connectMongo from '@/libs/mongoose';
-import User from '@/models/User';
-import bcrypt from 'bcrypt';
+import { supabase } from '@/libs/supabase'
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
@@ -15,27 +13,33 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: 'Missing required fields' });
     }
 
-    await connectMongo();
+    // Get the token from the database
+    const { data: tokenData, error: tokenError } = await supabase
+      .from('password_reset_tokens')
+      .select('*')
+      .eq('token', token)
+      .gt('expires_at', new Date().toISOString())
+      .single();
 
-    // Find the user with this token and ensure it's not expired
-    const user = await User.findOne({
-      resetToken: token,
-      resetTokenExpiry: { $gt: Date.now() }
-    });
-
-    if (!user) {
+    if (tokenError || !tokenData) {
       return res.status(400).json({ error: 'Invalid or expired token' });
     }
 
-    // Hash the new password
-    const salt = await bcrypt.genSalt(10);
-    const hashedPassword = await bcrypt.hash(password, salt);
+    // Update user's password via Supabase Auth API
+    const { error: updateError } = await supabase.auth.admin.updateUserById(
+      tokenData.user_id,
+      { password: password }
+    );
 
-    // Update user's password and clear reset token
-    user.password = hashedPassword;
-    user.resetToken = undefined;
-    user.resetTokenExpiry = undefined;
-    await user.save();
+    if (updateError) {
+      return res.status(500).json({ error: 'Failed to update password' });
+    }
+
+    // Delete the token
+    await supabase
+      .from('password_reset_tokens')
+      .delete()
+      .eq('token', token);
 
     return res.status(200).json({ message: 'Password reset successful' });
   } catch (error) {

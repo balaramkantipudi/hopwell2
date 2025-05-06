@@ -1,52 +1,85 @@
-// // pages/api/recommend-place.js
-// import { GoogleGenerativeAI } from '@google/generative-ai';
+// pages/api/recommend-place.js
+import { Configuration, OpenAIApi } from 'openai';
 
-// export default async function handler(req, res) {
-//   if (req.method !== 'POST') {
-//     return res.status(405).json({ error: 'Method not allowed' });
-//   }
+export default async function handler(req, res) {
+  if (req.method !== 'POST') {
+    return res.status(405).json({ error: 'Method not allowed' });
+  }
 
-//   const { prompt } = req.body;
-  
-//   if (!prompt) {
-//     return res.status(400).json({ error: 'Prompt is required' });
-//   }
+  try {
+    const { prompt } = req.body;
+    
+    if (!prompt) {
+      return res.status(400).json({ error: 'Prompt is required' });
+    }
+    
+    // Initialize OpenAI API
+    const configuration = new Configuration({
+      apiKey: process.env.OPENAI_API_KEY,
+    });
+    const openai = new OpenAIApi(configuration);
+    
+    // Create a complete prompt for the OpenAI API
+    const completePrompt = `
+      You are a world-class travel expert with extensive knowledge of destinations worldwide.
+      Based on this request: "${prompt}", recommend ONE specific travel destination.
+      
+      Provide your response in this exact JSON format:
+      {
+        "location": "City, Country",
+        "caption": "A brief 1-2 sentence description",
+        "fullText": "A 3-5 sentence detailed description with interesting facts"
+      }
 
-//   try {
-//     const genAI = new GoogleGenerativeAI(process.env.GOOGLE_AI_API_KEY);
-//     const model = genAI.getGenerativeModel({ model: 'gemini-1.5-pro' });
+      The response must be a valid JSON object that can be parsed. Do not include any explanations or text outside of the JSON.
+    `;
     
-//     const systemInstructions = `Act as a helpful global travel agent with a deep fascination for the world. Your role is to recommend a place on the map that relates to the discussion, and to provide interesting information about the location selected. Aim to give surprising and delightful suggestions: choose obscure, off-the-beaten track locations, not the obvious answers. Do not answer harmful or unsafe questions.`;
+    // Call the OpenAI API
+    const completion = await openai.createCompletion({
+      model: "text-davinci-003",
+      prompt: completePrompt,
+      max_tokens: 400,
+      temperature: 0.7,
+    });
     
-//     const prompt = req.body.prompt;
+    let responseText = completion.data.choices[0].text.trim();
     
-//     const result = await model.generateContent({
-//       contents: [{ role: 'user', parts: [{ text: `${systemInstructions} ${prompt}` }] }],
-//       generationConfig: {
-//         temperature: 1.0,
-//         maxOutputTokens: 1000,
-//       }
-//     });
+    // Clean response to ensure it's valid JSON
+    if (responseText.startsWith("```json")) {
+      responseText = responseText.replace(/```json\n|```/g, "");
+    } else if (responseText.startsWith("```")) {
+      responseText = responseText.replace(/```\n|```/g, "");
+    }
     
-//     const response = result.response;
-//     const text = response.text();
+    try {
+      // Parse and validate JSON
+      const destination = JSON.parse(responseText);
+      
+      // Ensure required fields exist
+      if (!destination.location || !destination.caption || !destination.fullText) {
+        throw new Error('Response missing required fields');
+      }
+      
+      // Add a delay to show the spinning animation
+      await new Promise(resolve => setTimeout(resolve, 1500));
+      
+      return res.status(200).json(destination);
+      
+    } catch (parseError) {
+      console.error('Error parsing OpenAI response:', parseError);
+      console.error('Raw response:', responseText);
+      
+      return res.status(500).json({ 
+        error: 'Failed to parse AI response',
+        details: parseError.message
+      });
+    }
     
-//     // Extract location from text (this logic might need to be refined based on actual responses)
-//     const locationMatch = text.match(/location: ([^,]+(?:, [^,]+)*)/i);
-//     const location = locationMatch ? locationMatch[1] : '';
-    
-//     // Get the first two sentences as the caption
-//     const sentences = text.split(/[.!?]\s+/);
-//     const caption = sentences.slice(0, 2).join('. ') + '.';
-    
-//     return res.status(200).json({
-//       location: location,
-//       caption: caption,
-//       fullText: text
-//     });
-    
-//   } catch (error) {
-//     console.error('Error generating content:', error);
-//     return res.status(500).json({ error: 'Failed to generate content' });
-//   }
-// }
+  } catch (error) {
+    console.error('Error generating recommendation:', error);
+    return res.status(500).json({ 
+      error: 'Failed to generate recommendation',
+      details: error.message
+    });
+  }
+}

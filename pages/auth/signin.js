@@ -1,65 +1,58 @@
-
-import { useState } from 'react';
-import { signIn } from "next-auth/react";
-import { useRouter } from 'next/router';
-import Link from 'next/link';
-import Image from 'next/image';
-import logo from '@/public/logo.png';
+// pages/auth/signin.js
+import { useState } from 'react'
+import { useRouter } from 'next/router'
+import Link from 'next/link'
+import Image from 'next/image'
+import logo from '@/public/logo.png'
+import { useAuth } from '@/components/AuthContext'
+import { supabase } from '@/libs/supabase'
 
 export default function Signin() {
-  const router = useRouter();
+  const { signIn } = useAuth()
+  const router = useRouter()
   const [formData, setFormData] = useState({
     email: '',
     password: ''
-  });
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState('');
-  const [rememberMe, setRememberMe] = useState(false);
+  })
+  const [isLoading, setIsLoading] = useState(false)
+  const [error, setError] = useState('')
+  const [rememberMe, setRememberMe] = useState(false)
 
-  // Get error message from URL if available
-  const { error: errorParam } = router.query;
+  // Check for error in URL
+  const { error: errorParam } = router.query
   
   if (errorParam && !error) {
-    if (errorParam === 'CredentialsSignin') {
-      setError('Invalid email or password');
-    } else {
-      setError(errorParam);
-    }
+    setError(errorParam === 'callback_error' 
+      ? 'Authentication failed. Please try again.' 
+      : errorParam)
   }
 
   const handleChange = (e) => {
-    const { name, value } = e.target;
+    const { name, value } = e.target
     setFormData(prev => ({
       ...prev,
       [name]: value
-    }));
-  };
+    }))
+  }
 
   const handleSubmit = async (e) => {
-    e.preventDefault();
-    setError('');
-    setIsLoading(true);
+    e.preventDefault()
+    setError('')
+    setIsLoading(true)
   
     try {
-      const result = await signIn('credentials', {
-        redirect: false,
-        email: formData.email,
-        password: formData.password,
-        remember: rememberMe, // Pass remember me value
-        callbackUrl: router.query.callbackUrl || '/trip-planner'
-      });
+      // Sign in with Supabase
+      const { data, error } = await signIn(formData.email, formData.password)
   
-      if (result.error) {
-        setError(result.error);
-      } else {
-        router.push(result.url || '/trip-planner');
-      }
+      if (error) throw error
+      
+      // Redirect happens in the auth context
     } catch (err) {
-      setError('An unexpected error occurred');
+      setError(err.message)
     } finally {
-      setIsLoading(false);
+      setIsLoading(false)
     }
-  };
+  }
 
   return (
     <div className="min-h-screen bg-yellow-50 flex flex-col justify-center py-12 sm:px-6 lg:px-8">
@@ -103,7 +96,7 @@ export default function Signin() {
                   value={formData.email}
                   onChange={handleChange}
                   className="appearance-none block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm bg-white text-gray-900 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
-                  />
+                />
               </div>
             </div>
 
@@ -127,19 +120,24 @@ export default function Signin() {
 
             <div className="flex items-center justify-between">
               <div className="flex items-center bg-white">
-              <input id="remember-me" name="remember-me"
-                      type="checkbox" checked={rememberMe}
-                      onChange={(e) => setRememberMe(e.target.checked)}
-              className="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded"/>
+                <input 
+                  id="remember-me" 
+                  name="remember-me"
+                  type="checkbox" 
+                  checked={rememberMe}
+                  onChange={(e) => setRememberMe(e.target.checked)}
+                  className="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded"
+                />
                 <label htmlFor="remember-me" className="ml-2 block text-sm bg-white text-gray-900">
                   Remember me
                 </label>
               </div>
 
               <div className="text-sm">
-              <Link href="/auth/forgot-password" 
-              className="font-medium text-indigo-600 hover:text-indigo-500">
-              Forgot your password?</Link>
+                <Link href="/auth/forgot-password" 
+                  className="font-medium text-indigo-600 hover:text-indigo-500">
+                  Forgot your password?
+                </Link>
               </div>
             </div>
 
@@ -166,7 +164,19 @@ export default function Signin() {
 
             <div className="mt-6">
               <button
-                onClick={() => signIn('google', { callbackUrl: router.query.callbackUrl || '/trip-planner' })}
+                onClick={async () => {
+                  try {
+                    const { data, error } = await supabase.auth.signInWithOAuth({
+                      provider: 'google',
+                      options: {
+                        redirectTo: `${window.location.origin}/auth/callback`
+                      }
+                    })
+                    if (error) throw error
+                  } catch (err) {
+                    setError(err.message)
+                  }
+                }}
                 className="w-full flex justify-center py-2 px-4 border border-gray-300 rounded-md shadow-sm bg-white text-sm font-medium text-gray-500 hover:bg-gray-50"
               >
                 <svg className="w-5 h-5 mr-2" viewBox="0 0 24 24">
@@ -182,5 +192,5 @@ export default function Signin() {
         </div>
       </div>
     </div>
-  );
+  )
 }
