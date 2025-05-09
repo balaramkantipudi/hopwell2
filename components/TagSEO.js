@@ -271,9 +271,8 @@ export default function DestinationPage({ destination }) {
         }}
       />
       <main>
-        {/* Page content */}
+        {/* Page content }
       </main>
     </>
   );
-}
-*/
+}*/
