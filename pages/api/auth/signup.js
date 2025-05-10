@@ -19,7 +19,8 @@ export default async function handler(req, res) {
     options: {
       data: {
         name,
-      }
+      },
+      emailRedirectTo: `${process.env.NEXT_PUBLIC_SITE_URL}/auth/callback`
     }
   })
   
