@@ -45,8 +45,7 @@ const TripHeader = () => {
             </nav>
           </div>
           <div className="flex items-center space-x-4">
-            {/* Credit indicator */}
-            {user && <CompactCreditsIndicator />}
+            {/* Credit indicator{user && <CompactCreditsIndicator />} */}
             
             {user ? (
               <button
