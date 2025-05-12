@@ -19,8 +19,8 @@ export function AuthProvider({ children }) {
         // Supabase can handle the hash as part of its auth flow
         const { data, error } = await supabase.auth.getUser()
         if (data?.user) {
-          // Successfully confirmed email, now redirect to dashboard
-          router.push('/dashboard')
+          // Successfully confirmed email, now redirect to trip planner instead of dashboard
+          router.push('/trip-planner')
         }
       }
     }
@@ -52,8 +52,8 @@ export function AuthProvider({ children }) {
 
         // Handle specific auth events
         if (event === 'SIGNED_IN' && session) {
-          // Redirect to dashboard after sign in
-          router.push('/dashboard')
+          // Redirect to trip-planner after sign in instead of dashboard
+          router.push('/trip-planner')
         } else if (event === 'SIGNED_OUT') {
           // Redirect to home after sign out
           router.push('/')

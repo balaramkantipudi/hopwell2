@@ -1,4 +1,4 @@
-// pages/api/direct-itinerary.js - Fixed authentication handling
+// pages/api/direct-itinerary.js
 import { supabase } from '@/libs/supabase';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 
@@ -70,7 +70,6 @@ export default async function handler(req, res) {
           });
         }
         
-        // Use the newly created credits
         userCredits = newCredits[0]; // Get the first record from the array
         console.log('Created credits:', userCredits);
       } else {

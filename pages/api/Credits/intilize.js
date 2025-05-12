@@ -34,7 +34,7 @@ export default async function handler(req, res) {
       .insert([
         { 
           user_id: userId,
-          credits_remaining: 5, // Start with 5 free credits
+          credits_remaining: 10, // Start with 5 free credits
           total_credits_used: 0
         }
       ])

@@ -4,6 +4,7 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { useAuth } from './AuthContext';
 import logo from '@/public/logo.png';
+import CompactCreditsIndicator from './CompactCreditsIndicator';
 
 const TripHeader = () => {
   const router = useRouter();
@@ -43,16 +44,19 @@ const TripHeader = () => {
               </Link>
             </nav>
           </div>
-          <div className="flex items-center">
+          <div className="flex items-center space-x-4">
+            {/* Credit indicator */}
+            {user && <CompactCreditsIndicator />}
+            
             {user ? (
               <button
                 onClick={() => signOut()}
-                className="ml-3 inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-indigo-700 bg-indigo-100 hover:bg-indigo-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+                className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-indigo-700 bg-indigo-100 hover:bg-indigo-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
               >
                 Sign out
               </button>
             ) : (
-              <Link href="/auth/signin" className="ml-3 inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-indigo-700 bg-indigo-100 hover:bg-indigo-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">
+              <Link href="/auth/signin" className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-indigo-700 bg-indigo-100 hover:bg-indigo-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">
                 Sign in
               </Link>
             )}

@@ -1,6 +1,6 @@
 // components/UserCreditStatus.js
 import { useState, useEffect } from 'react';
-import { getUserCredits } from '@/utils/creditSystem';
+//import { getUserCredits } from '@/utils/creditSystem';
 import { useAuth } from '@/components/AuthContext';
 import Link from 'next/link';
 

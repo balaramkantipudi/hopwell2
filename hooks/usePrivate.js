@@ -1,10 +1,10 @@
 import { useEffect } from "react";
 import { signIn } from "next-auth/react";
 import { useAuth } from "@/components/AuthContext";
-import config from "@/config";
 
-// Use this on all private routes (like user dashboard, accounts). It will redirect the user to the login page if not authenticated
-export const usePrivate = (callbackUrl = config.callbackUrl) => {
+// Use this on all private routes. It will redirect the user to the login page if not authenticated,
+// and to the trip-planner page after login (instead of dashboard)
+export const usePrivate = (callbackUrl = "/trip-planner") => {
   const { data: session, status } =  useAuth();
 
   useEffect(() => {

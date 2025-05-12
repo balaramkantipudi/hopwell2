@@ -1,4 +1,4 @@
-// components/UserCreditDisplay.js - Fixed version
+// components/UserCreditDisplay.js
 import { useState, useEffect } from 'react';
 import { useAuth } from '@/components/AuthContext';
 import { supabase } from '@/libs/supabase';
