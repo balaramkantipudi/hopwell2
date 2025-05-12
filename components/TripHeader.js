@@ -4,7 +4,6 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { useAuth } from './AuthContext';
 import logo from '@/public/logo.png';
-import CompactCreditsIndicator from './CompactCreditsIndicator';
 
 const TripHeader = () => {
   const router = useRouter();
