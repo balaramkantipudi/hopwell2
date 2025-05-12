@@ -1,4 +1,4 @@
-// pages/api/saveTrip.js
+// pages/api/savetrip.js - Simplified version
 import { supabase } from '@/libs/supabase';
 
 export default async function handler(req, res) {
@@ -15,37 +15,26 @@ export default async function handler(req, res) {
     }
     
     const userId = session.user.id;
-    const { tripData, itinerary } = req.body;
+    const { tripData, itinerary, title } = req.body;
     
     if (!tripData || !itinerary) {
       return res.status(400).json({ error: 'Missing required data' });
     }
 
-    // Calculate trip duration
-    const startDate = new Date(tripData.startDate);
-    const endDate = new Date(tripData.endDate);
-    
-    // Save the trip to Supabase
+    // Insert into trips table with simplified structure
     const { data, error } = await supabase
       .from('trips')
       .insert([
         {
           user_id: userId,
-          title: `Trip to ${tripData.destination}`,
+          title: title || `Trip to ${tripData.destination}`,
           destination: tripData.destination,
-          origin: tripData.origin,
-          transport_mode: tripData.transportMode,
-          start_date: startDate.toISOString(),
-          end_date: endDate.toISOString(),
-          hotel_style: tripData.hotelStyle,
-          cuisine: tripData.cuisine,
-          theme: tripData.theme,
-          group_type: tripData.groupType,
-          group_count: tripData.groupCount || 1,
-          budget: tripData.budget,
-          priority: tripData.priority,
+          origin: tripData.origin || null,
+          start_date: tripData.startDate || null,
+          end_date: tripData.endDate || null,
           itinerary_text: itinerary,
-          status: 'generated',
+          preferences: tripData, // Store all preferences as a JSON object
+          status: 'saved',
           created_at: new Date().toISOString()
         }
       ])

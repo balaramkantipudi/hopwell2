@@ -139,74 +139,131 @@ export default function TripPlanner() {
     localStorage.setItem('tripFormData', JSON.stringify(dataToStore));
   };
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    if (!validateStep(step)) return;
+  // const handleSubmit = async (e) => {
+  //   e.preventDefault();
+  //   if (!validateStep(step)) return;
     
-    setStep(3); // Show loading state (now step 3 because we removed step 4)
-    setIsGenerating(true);
+  //   setStep(3); // Show loading state (now step 3 because we removed step 4)
+  //   setIsGenerating(true);
     
-    // Save form data to localStorage first
-    saveFormDataToStorage();
+  //   // Save form data to localStorage first
+  //   saveFormDataToStorage();
     
-    try {
-      // Format dates for API
-      const dataToSend = {
-        ...formData,
-        startDate: formData.startDate ? formData.startDate.toISOString() : null,
-        endDate: formData.endDate ? formData.endDate.toISOString() : null,
-        // Add default values for required API parameters that were removed from the form
-        budget: '1000', // Default budget value
-        priority: 'experience' // Default priority value
-      };
+  //   try {
+  //     // Format dates for API
+  //     const dataToSend = {
+  //       ...formData,
+  //       startDate: formData.startDate ? formData.startDate.toISOString() : null,
+  //       endDate: formData.endDate ? formData.endDate.toISOString() : null,
+  //       // Add default values for required API parameters that were removed from the form
+  //       budget: '1000', // Default budget value
+  //       priority: 'experience' // Default priority value
+  //     };
       
-      // Send data to our API endpoint
-      const res = await fetch('/api/direct-itinerary', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(dataToSend),
-      });
+  //     // Send data to our API endpoint
+  //     const res = await fetch('/api/direct-itinerary', {
+  //       method: 'POST',
+  //       headers: {
+  //         'Content-Type': 'application/json',
+  //       },
+  //       body: JSON.stringify(dataToSend),
+  //     });
       
-      // Parse response as text first to debug any issues
-      const responseText = await res.text();
+  //     // Parse response as text first to debug any issues
+  //     const responseText = await res.text();
       
-      // Try to parse as JSON
-      let data;
-      try {
-        data = JSON.parse(responseText);
-      } catch (error) {
-        console.error('Failed to parse response as JSON:', responseText);
-        throw new Error('Invalid response from server. Please try again.');
-      }
+  //     // Try to parse as JSON
+  //     let data;
+  //     try {
+  //       data = JSON.parse(responseText);
+  //     } catch (error) {
+  //       console.error('Failed to parse response as JSON:', responseText);
+  //       throw new Error('Invalid response from server. Please try again.');
+  //     }
       
-      if (!res.ok) {
-        throw new Error(data.error || 'Failed to generate itinerary');
-      }
+  //     if (!res.ok) {
+  //       throw new Error(data.error || 'Failed to generate itinerary');
+  //     }
       
-      if (!data.text) {
-        throw new Error('No itinerary text received from API');
-      }
+  //     if (!data.text) {
+  //       throw new Error('No itinerary text received from API');
+  //     }
       
-      // Store the generated itinerary in localStorage
-      localStorage.setItem('itineraryAndBudget', data.text);
+  //     // Store the generated itinerary in localStorage
+  //     localStorage.setItem('itineraryAndBudget', data.text);
       
-      // Wait a moment to show the loading screen, then redirect to results
-      setTimeout(() => {
-        router.push('/plan-my-trip/results');
-      }, 2000);
+  //     // Wait a moment to show the loading screen, then redirect to results
+  //     setTimeout(() => {
+  //       router.push('/plan-my-trip/results');
+  //     }, 2000);
       
-    } catch (error) {
-      console.error('Itinerary generation error:', error);
-      setStep(2); // Go back to the previous step to allow retry
-      setIsGenerating(false);
+  //   } catch (error) {
+  //     console.error('Itinerary generation error:', error);
+  //     setStep(2); // Go back to the previous step to allow retry
+  //     setIsGenerating(false);
       
-      // Show an error alert with more details
-      alert(`Failed to generate itinerary: ${error.message}. Please try again.`);
+  //     // Show an error alert with more details
+  //     alert(`Failed to generate itinerary: ${error.message}. Please try again.`);
+  //   }
+  // };
+// Updated handleSubmit function for trip-planner.js
+const handleSubmit = async (e) => {
+  e.preventDefault();
+  if (!validateStep(step)) return;
+  
+  setStep(3); // Show loading state
+  setIsGenerating(true);
+  
+  // Save form data to localStorage first
+  saveFormDataToStorage();
+  
+  try {
+    // Format dates for API
+    const dataToSend = {
+      ...formData,
+      startDate: formData.startDate ? formData.startDate.toISOString() : null,
+      endDate: formData.endDate ? formData.endDate.toISOString() : null,
+      // Add default values for required API parameters that were removed from the form
+      budget: '1000', // Default budget value
+      priority: 'experience' // Default priority value
+    };
+    
+    // Send data to our API endpoint
+    const res = await fetch('/api/direct-itinerary', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(dataToSend),
+    });
+    
+    if (!res.ok) {
+      const errorData = await res.json();
+      throw new Error(errorData.error || 'Failed to generate itinerary');
     }
-  };
-
+    
+    // Parse response as JSON
+    const data = await res.json();
+    
+    if (!data.text) {
+      throw new Error('No itinerary text received from API');
+    }
+    
+    // Store the generated itinerary in localStorage
+    localStorage.setItem('itineraryAndBudget', data.text);
+    
+    // Explicitly navigate to results page
+    router.push('/plan-my-trip/results');
+    
+  } catch (error) {
+    console.error('Itinerary generation error:', error);
+    setStep(2); // Go back to the previous step to allow retry
+    setIsGenerating(false);
+    
+    // Show an error alert with more details
+    alert(`Failed to generate itinerary: ${error.message}. Please try again.`);
+  }
+};
   const renderStep = () => {
     switch (step) {
       case 1:

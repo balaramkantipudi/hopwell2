@@ -1,10 +1,7 @@
-// pages/api/webhook/stripe.js
+// pages/api/webhook/stripe.js - Simplified for credit purchases
 import Stripe from "stripe";
 import { buffer } from "micro";
-import { supabase } from '../../../libs/supabase'  // Use relative path
-import { sendEmail } from "@/libs/mailgun";
-import configFile from "@/config";
-import { findCheckoutSession } from "@/libs/stripe";
+import { supabase } from '@/libs/supabase';
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 
@@ -12,6 +9,14 @@ export const config = {
   api: {
     bodyParser: false,
   },
+};
+
+// Map Stripe price IDs to credit amounts
+const creditPackages = {
+  'price_basic': 5,     // 5 credits
+  'price_explorer': 15, // 15 credits
+  'price_voyager': 50,  // 50 credits
+  // Replace with your actual Stripe price IDs
 };
 
 export default async function handler(req, res) {
@@ -32,9 +37,7 @@ export default async function handler(req, res) {
         try {
           event = stripe.webhooks.constructEvent(buf, signature, webhookSecret);
         } catch (err) {
-          console.error(
-            `Webhook signature verification failed. ${err.message}`
-          );
+          console.error(`Webhook signature verification failed. ${err.message}`);
           return res.status(400).send();
         }
         data = event.data;
@@ -47,56 +50,109 @@ export default async function handler(req, res) {
       try {
         switch (eventType) {
           case "checkout.session.completed": {
-            // First payment is successful and the subscription is created
-            const session = await findCheckoutSession(data.object.id);
+            // Extract the Stripe session data
+            const session = await stripe.checkout.sessions.retrieve(data.object.id, {
+              expand: ['line_items']
+            });
 
             const customerId = session?.customer;
-            const priceId = session?.line_items?.data[0]?.price.id;
-            const userId = data.object.client_reference_id;
-            const plan = configFile.stripe.plans.find(
-              (p) => p.priceId === priceId
-            );
+            const userId = session?.client_reference_id;
+            
+            // No client reference ID means we can't identify the user
+            if (!userId) {
+              console.error("No client reference ID found in session");
+              break;
+            }
 
-            if (!plan) break;
-
-            const customer = await stripe.customers.retrieve(customerId);
-
-            // Update the user in Supabase
-            if (userId) {
-              // Update user metadata
-              await supabase
-                .from('profiles')
-                .update({
-                  stripe_customer_id: customerId,
-                  stripe_price_id: priceId,
-                  updated_at: new Date().toISOString()
-                })
-                .eq('id', userId);
+            // Get the price ID from the line items
+            const lineItems = session?.line_items?.data;
+            if (!lineItems || lineItems.length === 0) {
+              console.error("No line items found in session");
+              break;
+            }
+            
+            const priceId = lineItems[0].price.id;
+            
+            // Check if this is a credit package purchase
+            const creditAmount = creditPackages[priceId];
+            
+            if (creditAmount) {
+              console.log(`Adding ${creditAmount} credits to user ${userId}`);
               
-            } else if (customer.email) {
-              // Try to find user by email
-              const { data: userByEmail } = await supabase
-                .from('profiles')
-                .select('id')
-                .eq('email', customer.email)
+              // First, get the user's current credits
+              let { data: userCredits, error: creditError } = await supabase
+                .from('user_credits')
+                .select('*')
+                .eq('user_id', userId)
                 .single();
-
-              if (userByEmail) {
-                await supabase
-                  .from('profiles')
-                  .update({
-                    stripe_customer_id: customerId,
-                    stripe_price_id: priceId,
-                    updated_at: new Date().toISOString()
+              
+              if (creditError) {
+                // If no record exists, create one
+                if (creditError.code === 'PGRST116') { // Record not found
+                  const { data: newUser, error: insertError } = await supabase
+                    .from('user_credits')
+                    .insert([
+                      { 
+                        user_id: userId,
+                        credits_remaining: creditAmount, // Start with the purchased amount
+                        total_credits_used: 0
+                      }
+                    ])
+                    .select()
+                    .single();
+                    
+                  if (insertError) {
+                    console.error(`Could not create user credits: ${insertError.message}`);
+                    break;
+                  }
+                  
+                  userCredits = newUser;
+                } else {
+                  console.error(`Could not fetch user credits: ${creditError.message}`);
+                  break;
+                }
+              } else {
+                // Update existing credits
+                const { error: updateError } = await supabase
+                  .from('user_credits')
+                  .update({ 
+                    credits_remaining: userCredits.credits_remaining + creditAmount
                   })
-                  .eq('id', userByEmail.id);
+                  .eq('user_id', userId);
+                
+                if (updateError) {
+                  console.error(`Could not update credits: ${updateError.message}`);
+                  break;
+                }
               }
+              
+              // Record the purchase in Supabase
+              const { error: purchaseError } = await supabase
+                .from('credit_purchases')
+                .insert([
+                  {
+                    user_id: userId,
+                    stripe_customer_id: customerId,
+                    stripe_session_id: session.id,
+                    price_id: priceId,
+                    credits_purchased: creditAmount,
+                    amount_paid: session.amount_total / 100, // Convert from cents to dollars
+                    status: 'completed',
+                    created_at: new Date().toISOString()
+                  }
+                ]);
+              
+              if (purchaseError) {
+                console.error(`Error recording purchase: ${purchaseError.message}`);
+              }
+              
+              console.log(`Credits added successfully to user ${userId}`);
             }
 
             break;
           }
           
-          // Handle other Stripe webhook events...
+          // You can handle other Stripe webhook events here
         }
       } catch (e) {
         console.error("stripe error: ", e.message);

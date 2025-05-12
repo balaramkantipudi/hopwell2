@@ -1,10 +1,8 @@
-// pages/api/direct-itinerary.js
-// A simplified, direct version of the itinerary generator that uses only the working model
+// pages/api/direct-itinerary.js - Fixed authentication handling
+import { supabase } from '@/libs/supabase';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 
 export default async function handler(req, res) {
-  console.log('Direct itinerary API called');
-  
   // Set Content-Type header
   res.setHeader('Content-Type', 'application/json');
   
@@ -14,13 +12,24 @@ export default async function handler(req, res) {
   }
   
   try {
+    // First, check if user is authenticated
+    const { data: { session }, error: authError } = await supabase.auth.getSession();
+    
+    if (authError) {
+      console.error('Auth error:', authError);
+      return res.status(401).json({ error: 'Authentication error', message: authError.message });
+    }
+    
+    if (!session || !session.user) {
+      console.log('No active session found');
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+    
+    const userId = session.user.id;
+    console.log('Authenticated user:', userId);
+    
     // Get form data from request body
     const data = req.body;
-    console.log('Form data received:', {
-      destination: data.destination || '(missing)',
-      startDate: data.startDate || '(missing)',
-      endDate: data.endDate || '(missing)'
-    });
     
     // Ensure destination is provided
     if (!data.destination) {
@@ -30,33 +39,83 @@ export default async function handler(req, res) {
       });
     }
     
+    // Check if user has credits directly from the database
+    let { data: userCredits, error: creditError } = await supabase
+      .from('user_credits')
+      .select('*')
+      .eq('user_id', userId)
+      .single();
+    
+    // Handle the case where the user doesn't have a credits record yet
+    if (creditError) {
+      // If no record exists, create one with default credits
+      if (creditError.code === 'PGRST116') { // Record not found
+        console.log('Creating new credit record for user:', userId);
+        const { data: newCredits, error: insertError } = await supabase
+          .from('user_credits')
+          .insert([
+            { 
+              user_id: userId,
+              credits_remaining: 5, // Start with 5 free credits
+              total_credits_used: 0
+            }
+          ])
+          .select();
+          
+        if (insertError) {
+          console.error('Failed to create credit record:', insertError);
+          return res.status(500).json({ 
+            error: 'Could not initialize credits',
+            message: insertError.message
+          });
+        }
+        
+        // Use the newly created credits
+        userCredits = newCredits[0]; // Get the first record from the array
+        console.log('Created credits:', userCredits);
+      } else {
+        console.error('Error fetching credits:', creditError);
+        return res.status(500).json({ 
+          error: 'Could not check credits',
+          message: creditError.message
+        });
+      }
+    }
+    
+    // Check if user has enough credits
+    if (!userCredits || userCredits.credits_remaining <= 0) {
+      return res.status(403).json({
+        error: 'No credits remaining',
+        message: 'You have used all your credits. Please purchase more to generate new itineraries.'
+      });
+    }
+    
+    console.log('User has credits remaining:', userCredits.credits_remaining);
+    
     // Get API key from environment variables
     const apiKey = process.env.GEMINI_API_KEY;
-    console.log('API key available:', !!apiKey);
     
-    if (!apiKey) {
-      // Use local generation if no API key
-      const localItinerary = generateBasicItinerary(data);
-      return res.status(200).json({ text: localItinerary, source: 'local' });
-    }
+    let itineraryText;
+    let source = 'local';
     
-    // Initialize the Gemini AI with the known working model
-    const genAI = new GoogleGenerativeAI(apiKey);
-    const model = genAI.getGenerativeModel({ model: 'gemini-1.5-pro' });
-    
-    console.log('Creating prompt for Gemini API...');
-    
-    // Calculate trip duration
-    let tripDuration = '3';
-    if (data.startDate && data.endDate) {
-      const start = new Date(data.startDate);
-      const end = new Date(data.endDate);
-      tripDuration = Math.max(1, Math.ceil((end - start) / (1000 * 60 * 60 * 24))).toString();
-    }
-    
-    // Create a prompt for the AI
-    const prompt = `Create a detailed ${tripDuration}-day travel itinerary to ${data.destination}.
-    
+    // Generate the itinerary (rest of the generation logic)
+    if (apiKey) {
+      try {
+        // Initialize the Gemini AI
+        const genAI = new GoogleGenerativeAI(apiKey);
+        const model = genAI.getGenerativeModel({ model: 'gemini-1.5-pro' });
+        
+        // Calculate trip duration
+        let tripDuration = '3';
+        if (data.startDate && data.endDate) {
+          const start = new Date(data.startDate);
+          const end = new Date(data.endDate);
+          tripDuration = Math.max(1, Math.ceil((end - start) / (1000 * 60 * 60 * 24))).toString();
+        }
+        
+        // Create prompt
+        const prompt = `Create a detailed ${tripDuration}-day travel itinerary to ${data.destination}.
+        
 TRIP DETAILS:
 - Destination: ${data.destination}
 - Origin: ${data.origin || 'Not specified'}
@@ -78,82 +137,62 @@ Format the itinerary with these sections:
 
 Use clear headers with ALL CAPS and divider lines (===== or -----).
 Be specific with real attraction names, restaurant recommendations, and hotel options.
-    `;
-    
-    console.log('Sending request to Gemini...');
-    
-    // Generate the itinerary with Gemini
-    try {
-      const result = await model.generateContent(prompt);
-      const response = await result.response;
-      const text = response.text();
-      
-      console.log('Received response from Gemini, length:', text.length);
-      console.log('First 100 chars:', text.substring(0, 100));
-      
-      if (text && text.length > 100) {
-        return res.status(200).json({ text: text, source: 'gemini' });
-      } else {
-        throw new Error('Received too short or empty response from Gemini');
+`;
+        
+        // Generate the itinerary
+        const result = await model.generateContent(prompt);
+        const response = await result.response;
+        itineraryText = response.text();
+        source = 'gemini';
+        
+      } catch (geminiError) {
+        console.error('Gemini API error:', geminiError);
+        // Fall back to local generation if API fails
+        itineraryText = generateLocalItinerary(data);
       }
-      
-    } catch (geminiError) {
-      console.error('Gemini API error:', geminiError);
-      
-      // Fall back to local generation
-      const localItinerary = generateBasicItinerary(data);
-      return res.status(200).json({ 
-        text: localItinerary, 
-        source: 'local', 
-        error: geminiError.message 
-      });
+    } else {
+      // No API key, use local generation
+      itineraryText = generateLocalItinerary(data);
     }
+    
+    // Now deduct a credit from the user
+    console.log('Deducting credit from user:', userId);
+    const { error: updateError } = await supabase
+      .from('user_credits')
+      .update({ 
+        credits_remaining: userCredits.credits_remaining - 1,
+        total_credits_used: (userCredits.total_credits_used || 0) + 1
+      })
+      .eq('user_id', userId);
+    
+    if (updateError) {
+      console.error('Error updating credits:', updateError);
+      // Continue anyway since we've already generated the itinerary
+    }
+    
+    return res.status(200).json({ 
+      text: itineraryText, 
+      source,
+      credits: {
+        remaining: userCredits.credits_remaining - 1,
+        used: true
+      }
+    });
     
   } catch (error) {
     console.error('Server error:', error);
     
-    // Emergency fallback
-    try {
-      const emergencyItinerary = `
-BASIC ITINERARY FOR ${req.body?.destination?.toUpperCase() || 'YOUR DESTINATION'}
-======================================================
-
-DAY 1: ARRIVAL
-- Arrive at your destination
-- Check into your accommodation
-- Explore the immediate area
-- Have dinner at a local restaurant
-
-DAY 2: MAIN ATTRACTIONS
-- Visit the top attractions in the city
-- Try local cuisine for lunch
-- Explore museums or historical sites
-- Enjoy an evening meal at a recommended restaurant
-
-DAY 3: DEPARTURE
-- Last-minute sightseeing
-- Souvenir shopping
-- Departure
-      `;
-      
-      return res.status(200).json({ 
-        text: emergencyItinerary, 
-        source: 'emergency',
-        error: error.message
-      });
-      
-    } catch (emergencyError) {
-      return res.status(500).json({ 
-        error: 'Failed to generate itinerary', 
-        message: error.message 
-      });
-    }
+    // Return error with appropriate status code
+    return res.status(500).json({ 
+      error: 'Failed to generate itinerary', 
+      message: error.message 
+    });
   }
 }
 
-// Fallback function to generate a basic itinerary locally
-function generateBasicItinerary(data) {
-  console.log('Generating basic itinerary locally...');
+// Local generation function
+function generateLocalItinerary(data) {
+  console.log('Using local generation for', data.destination);
   
   // Extract data with defaults
   const destination = data.destination;
