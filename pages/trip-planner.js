@@ -223,10 +223,12 @@ const handleSubmit = async (e) => {
       ...formData,
       startDate: formData.startDate ? formData.startDate.toISOString() : null,
       endDate: formData.endDate ? formData.endDate.toISOString() : null,
-      // Add default values for required API parameters that were removed from the form
-      budget: '1000', // Default budget value
-      priority: 'experience' // Default priority value
+      // Add default values for any required parameters
+      budget: formData.budget || '1000',
+      priority: formData.priority || 'experience'
     };
+    
+    console.log("Sending data to API:", dataToSend);
     
     // Send data to our API endpoint
     const res = await fetch('/api/direct-itinerary', {
@@ -235,15 +237,28 @@ const handleSubmit = async (e) => {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify(dataToSend),
+      // Include credentials to send cookies (important for auth)
+      credentials: 'include'
     });
     
-    if (!res.ok) {
-      const errorData = await res.json();
-      throw new Error(errorData.error || 'Failed to generate itinerary');
+    // Get response text first to debug any issues
+    const responseText = await res.text();
+    console.log("Raw API response:", responseText);
+    
+    // Try to parse as JSON
+    let data;
+    try {
+      data = JSON.parse(responseText);
+    } catch (parseError) {
+      console.error('Failed to parse response as JSON:', responseText);
+      throw new Error(`Invalid JSON response: ${responseText.substring(0, 100)}...`);
     }
     
-    // Parse response as JSON
-    const data = await res.json();
+    // Handle API errors
+    if (!res.ok) {
+      console.error('API error response:', data);
+      throw new Error(data.error || data.message || 'Failed to generate itinerary');
+    }
     
     if (!data.text) {
       throw new Error('No itinerary text received from API');
@@ -252,15 +267,18 @@ const handleSubmit = async (e) => {
     // Store the generated itinerary in localStorage
     localStorage.setItem('itineraryAndBudget', data.text);
     
-    // Explicitly navigate to results page
-    router.push('/plan-my-trip/results');
+    // Add a small delay to show the loading state
+    setTimeout(() => {
+      // Navigate to results page
+      router.push('/plan-my-trip/results');
+    }, 1500);
     
   } catch (error) {
     console.error('Itinerary generation error:', error);
-    setStep(2); // Go back to the previous step to allow retry
+    setStep(2); // Go back to the previous step
     setIsGenerating(false);
     
-    // Show an error alert with more details
+    // Show error message
     alert(`Failed to generate itinerary: ${error.message}. Please try again.`);
   }
 };
