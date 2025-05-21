@@ -6,6 +6,7 @@ import Footer from "@/components/Footer";
 import { supabase } from "@/libs/supabase";
 import TripHeader from "@/components/TripHeader";
 import { useAuth } from "@/components/AuthContext";
+import { processItinerary } from "@/libs/affiliateLinks"; // Import the utility function
 
 export default function ResultsPage() {
   const [itineraryData, setItineraryData] = useState("");
@@ -19,211 +20,210 @@ export default function ResultsPage() {
   const { user } = useAuth();
 
   // Add to useEffect in plan-my-trip/results.js
-useEffect(() => {
-  const fetchItinerary = async () => {
-    try {
-      // Get the itinerary text from localStorage
-      const storedItinerary = localStorage.getItem("itineraryAndBudget");
-      
-      // Get the form data from localStorage
-      const storedFormData = localStorage.getItem("tripFormData");
-      
-      if (storedItinerary) {
-        if (storedFormData) {
-          try {
-            const formData = JSON.parse(storedFormData);
-            setTripData(formData);
+  useEffect(() => {
+    const fetchItinerary = async () => {
+      try {
+        // Get the itinerary text from localStorage
+        const storedItinerary = localStorage.getItem("itineraryAndBudget");
+        
+        // Get the form data from localStorage
+        const storedFormData = localStorage.getItem("tripFormData");
+        
+        if (storedItinerary) {
+          if (storedFormData) {
+            try {
+              const formData = JSON.parse(storedFormData);
+              setTripData(formData);
+              
+              // Process the itinerary with our helper function
+              const processedItinerary = processItinerary(storedItinerary, formData);
+              setItineraryData(processedItinerary);
+              
+              // Extract destination from the itinerary for the title
+              const destinationMatch = storedItinerary.match(/TRIP TO ([^-\n]+)/i);
+              const defaultTitle = destinationMatch 
+                ? `Trip to ${destinationMatch[1].trim()}` 
+                : "My Travel Itinerary";
+              
+              setTripTitle(defaultTitle);
+            } catch (error) {
+              console.error("Error parsing form data:", error);
+              setItineraryData(storedItinerary);
+            }
+          } else {
+            setItineraryData(storedItinerary);
             
-            // Process the itinerary with our helper function
-            const processedItinerary = processItinerary(storedItinerary, formData);
-            setItineraryData(processedItinerary);
-            
-            // Extract destination from the itinerary for the title
+            // Extract destination for title without form data
             const destinationMatch = storedItinerary.match(/TRIP TO ([^-\n]+)/i);
             const defaultTitle = destinationMatch 
               ? `Trip to ${destinationMatch[1].trim()}` 
               : "My Travel Itinerary";
             
             setTripTitle(defaultTitle);
-          } catch (error) {
-            console.error("Error parsing form data:", error);
-            setItineraryData(storedItinerary);
           }
-        } else {
-          setItineraryData(storedItinerary);
-          
-          // Extract destination for title without form data
-          const destinationMatch = storedItinerary.match(/TRIP TO ([^-\n]+)/i);
-          const defaultTitle = destinationMatch 
-            ? `Trip to ${destinationMatch[1].trim()}` 
-            : "My Travel Itinerary";
-          
-          setTripTitle(defaultTitle);
         }
+      } catch (error) {
+        console.error("Error loading itinerary:", error);
+      } finally {
+        setIsLoading(false);
       }
-    } catch (error) {
-      console.error("Error loading itinerary:", error);
-    } finally {
-      setIsLoading(false);
-    }
-  };
+    };
 
-  fetchItinerary();
-}, []);
+    fetchItinerary();
+  }, []);
 
   // Updated formatItinerary function for results page
-const formatItinerary = (text) => {
-  if (!text) return [];
-  
-  // Process markdown with proper styling
-  return text.split('\n').map((line, index) => {
-    // Major section header (ALL CAPS with === or ---)
-    if (line.match(/^[A-Z\s\d]{3,}$/) || line.match(/^#+\s+[A-Z\s\d]{3,}$/)) {
-      return (
-        <h2 key={index} className="text-2xl font-bold text-indigo-900 mt-8 mb-4">
-          {line.replace(/^#+\s+/, "")}
-        </h2>
-      );
-    }
-    // Section divider line (=== or ---)
-    else if (line.match(/^[=\-]{3,}$/)) {
-      return <hr key={index} className="border-t border-gray-300 my-2" />;
-    }
-    // Subsection header (mixed case, usually ends with :)
-    else if (line.match(/^##\s+.+/) || (line.match(/^[A-Z][a-z]/) && line.match(/:/))) {
-      return (
-        <h3 key={index} className="text-xl font-semibold text-indigo-800 mt-6 mb-2">
-          {line.replace(/^##\s+/, "")}
-        </h3>
-      );
-    }
-    // Bold text (** or __)
-    else if (line.match(/\*\*.+\*\*/) || line.match(/__.*__/)) {
-      return (
-        <p key={index} className="mb-2">
-          {line.split(/(\*\*.*?\*\*|__.*?__)/g).map((part, i) => {
-            if (part.startsWith('**') && part.endsWith('**')) {
-              return <strong key={i}>{part.slice(2, -2)}</strong>;
-            } else if (part.startsWith('__') && part.endsWith('__')) {
-              return <strong key={i}>{part.slice(2, -2)}</strong>;
-            }
-            return part;
-          })}
-        </p>
-      );
-    }
-    // Bullet point (- or *)
-    else if (line.trim().startsWith('-') || line.trim().startsWith('*')) {
-      const bulletContent = line.trim().substring(1).trim();
-      
-      // Check if the bullet content contains a link [text](url)
-      if (bulletContent.match(/\[.*?\]\(.*?\)/)) {
+  const formatItinerary = (text) => {
+    if (!text) return [];
+    
+    // Process markdown with proper styling
+    return text.split('\n').map((line, index) => {
+      // Major section header (ALL CAPS with === or ---)
+      if (line.match(/^[A-Z\s\d]{3,}$/) || line.match(/^#+\s+[A-Z\s\d]{3,}$/)) {
         return (
-          <p key={index} className="ml-6 mb-2 flex items-start">
-            <span className="inline-block w-2 h-2 mt-2 rounded-full bg-indigo-600 mr-2 flex-shrink-0"></span>
-            <span>
-              {bulletContent.split(/(\[.*?\]\(.*?\))/g).map((part, i) => {
-                const linkMatch = part.match(/\[(.*?)\]\((.*?)\)/);
-                if (linkMatch) {
-                  return <a key={i} href={linkMatch[2]} target="_blank" rel="noopener noreferrer" className="text-indigo-600 hover:underline">{linkMatch[1]}</a>;
-                }
-                return part;
-              })}
-            </span>
+          <h2 key={index} className="text-2xl font-bold text-indigo-900 mt-8 mb-4">
+            {line.replace(/^#+\s+/, "")}
+          </h2>
+        );
+      }
+      // Section divider line (=== or ---)
+      else if (line.match(/^[=\-]{3,}$/)) {
+        return <hr key={index} className="border-t border-gray-300 my-2" />;
+      }
+      // Subsection header (mixed case, usually ends with :)
+      else if (line.match(/^##\s+.+/) || (line.match(/^[A-Z][a-z]/) && line.match(/:/))) {
+        return (
+          <h3 key={index} className="text-xl font-semibold text-indigo-800 mt-6 mb-2">
+            {line.replace(/^##\s+/, "")}
+          </h3>
+        );
+      }
+      // Bold text (** or __)
+      else if (line.match(/\*\*.+\*\*/) || line.match(/__.*__/)) {
+        return (
+          <p key={index} className="mb-2">
+            {line.split(/(\*\*.*?\*\*|__.*?__)/g).map((part, i) => {
+              if (part.startsWith('**') && part.endsWith('**')) {
+                return <strong key={i}>{part.slice(2, -2)}</strong>;
+              } else if (part.startsWith('__') && part.endsWith('__')) {
+                return <strong key={i}>{part.slice(2, -2)}</strong>;
+              }
+              return part;
+            })}
           </p>
         );
       }
-      
-      return (
-        <p key={index} className="ml-6 mb-2 flex items-start">
-          <span className="inline-block w-2 h-2 mt-2 rounded-full bg-indigo-600 mr-2 flex-shrink-0"></span>
-          <span>{bulletContent}</span>
-        </p>
-      );
-    }
-    // Links [text](url)
-    else if (line.match(/\[.*?\]\(.*?\)/)) {
-      return (
-        <p key={index} className="mb-2">
-          {line.split(/(\[.*?\]\(.*?\))/g).map((part, i) => {
-            const linkMatch = part.match(/\[(.*?)\]\((.*?)\)/);
-            if (linkMatch) {
-              return <a key={i} href={linkMatch[2]} target="_blank" rel="noopener noreferrer" className="text-indigo-600 hover:underline">{linkMatch[1]}</a>;
-            }
-            return part;
-          })}
-        </p>
-      );
-    }
-    // Empty line
-    else if (line.trim() === '') {
-      return <div key={index} className="h-2"></div>;
-    }
-    // Regular paragraph
-    else {
-      return <p key={index} className="mb-2">{line}</p>;
-    }
-  });
-};
-
-// Corrected saveTrip function for the results page
-const saveTrip = async () => {
-  if (!user) {
-    alert("Please sign in to save your trip");
-    router.push("/auth/signin");
-    return;
-  }
-
-  setIsSaving(true);
-  setSaveError("");
-
-  try {
-    // Get form data from localStorage if it exists
-    let formData = {};
-    try {
-      const storedFormData = localStorage.getItem("tripFormData");
-      if (storedFormData) {
-        formData = JSON.parse(storedFormData);
+      // Bullet point (- or *)
+      else if (line.trim().startsWith('-') || line.trim().startsWith('*')) {
+        const bulletContent = line.trim().substring(1).trim();
+        
+        // Check if the bullet content contains a link [text](url)
+        if (bulletContent.match(/\[.*?\]\(.*?\)/)) {
+          return (
+            <p key={index} className="ml-6 mb-2 flex items-start">
+              <span className="inline-block w-2 h-2 mt-2 rounded-full bg-indigo-600 mr-2 flex-shrink-0"></span>
+              <span>
+                {bulletContent.split(/(\[.*?\]\(.*?\))/g).map((part, i) => {
+                  const linkMatch = part.match(/\[(.*?)\]\((.*?)\)/);
+                  if (linkMatch) {
+                    return <a key={i} href={linkMatch[2]} target="_blank" rel="noopener noreferrer" className="text-indigo-600 hover:underline">{linkMatch[1]}</a>;
+                  }
+                  return part;
+                })}
+              </span>
+            </p>
+          );
+        }
+        
+        return (
+          <p key={index} className="ml-6 mb-2 flex items-start">
+            <span className="inline-block w-2 h-2 mt-2 rounded-full bg-indigo-600 mr-2 flex-shrink-0"></span>
+            <span>{bulletContent}</span>
+          </p>
+        );
       }
-    } catch (e) {
-      console.error("Error parsing stored form data:", e);
-    }
-
-    // Call the savetrip API endpoint
-    const response = await fetch('/api/savetrip', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        tripData: formData,
-        itinerary: itineraryData,
-        title: tripTitle
-      })
+      // Links [text](url)
+      else if (line.match(/\[.*?\]\(.*?\)/)) {
+        return (
+          <p key={index} className="mb-2">
+            {line.split(/(\[.*?\]\(.*?\))/g).map((part, i) => {
+              const linkMatch = part.match(/\[(.*?)\]\((.*?)\)/);
+              if (linkMatch) {
+                return <a key={i} href={linkMatch[2]} target="_blank" rel="noopener noreferrer" className="text-indigo-600 hover:underline">{linkMatch[1]}</a>;
+              }
+              return part;
+            })}
+          </p>
+        );
+      }
+      // Empty line
+      else if (line.trim() === '') {
+        return <div key={index} className="h-2"></div>;
+      }
+      // Regular paragraph
+      else {
+        return <p key={index} className="mb-2">{line}</p>;
+      }
     });
+  };
 
-    if (!response.ok) {
-      const errorData = await response.json();
-      throw new Error(errorData.error || 'Failed to save trip');
+  // Corrected saveTrip function for the results page
+  const saveTrip = async () => {
+    if (!user) {
+      alert("Please sign in to save your trip");
+      router.push("/auth/signin");
+      return;
     }
 
-    const result = await response.json();
-    console.log('Save success:', result);
+    setIsSaving(true);
+    setSaveError("");
 
-    setSaveSuccess(true);
-    
-    // Wait a short time then redirect to my-trips page
-    setTimeout(() => {
-      router.push("/my-trips");
-    }, 2000);
-  } catch (error) {
-    console.error("Error saving trip:", error);
-    setSaveError(error.message || "Failed to save trip. Please try again.");
-  } finally {
-    setIsSaving(false);
-  }
-};
- 
+    try {
+      // Get form data from localStorage if it exists
+      let formData = {};
+      try {
+        const storedFormData = localStorage.getItem("tripFormData");
+        if (storedFormData) {
+          formData = JSON.parse(storedFormData);
+        }
+      } catch (e) {
+        console.error("Error parsing stored form data:", e);
+      }
+
+      // Call the savetrip API endpoint
+      const response = await fetch('/api/savetrip', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          tripData: formData,
+          itinerary: itineraryData,
+          title: tripTitle
+        })
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to save trip');
+      }
+
+      const result = await response.json();
+      console.log('Save success:', result);
+
+      setSaveSuccess(true);
+      
+      // Wait a short time then redirect to my-trips page
+      setTimeout(() => {
+        router.push("/my-trips");
+      }, 2000);
+    } catch (error) {
+      console.error("Error saving trip:", error);
+      setSaveError(error.message || "Failed to save trip. Please try again.");
+    } finally {
+      setIsSaving(false);
+    }
+  };
 
   // Function to print the itinerary
   const printItinerary = () => {
@@ -264,8 +264,6 @@ const saveTrip = async () => {
       </Head>
 
       <div className="bg-yellow-50 min-h-screen">
-
-        
         <main className="print-container max-w-4xl mx-auto px-4 py-8">
           {isLoading ? (
             <div className="flex justify-center items-center py-20">
@@ -303,7 +301,7 @@ const saveTrip = async () => {
                     )}
                     {tripData.groupCount && (
                       <div>
-                        <span className="font-semibold">Travelers:</span> {tripData.groupCount} {tripData.groupType ? tripData.groupType : 'people'}
+                        <span className="font-semibold">Travelers:</span> {tripData.groupCount || 1} {tripData.groupType ? tripData.groupType : 'people'}
                       </div>
                     )}
                   </div>
@@ -374,7 +372,7 @@ const saveTrip = async () => {
                 </div>
               </div>
               
-              {/* Additional Tips Section */}
+              {/* Additional Tips Section - Now with Affiliate Links */}
               <div className="mt-8 bg-white shadow-lg rounded-lg p-6 no-print">
                 <h2 className="text-xl font-bold text-indigo-900 mb-4">Ready for Your Adventure?</h2>
                 <p className="mb-4">This itinerary is just the beginning of your journey. Here are some next steps:</p>
@@ -388,7 +386,16 @@ const saveTrip = async () => {
                     </div>
                     <div>
                       <h3 className="font-semibold">Book Your Accommodations</h3>
-                      <p className="text-sm text-gray-600">Secure your stay early for the best prices and availability.</p>
+                      <p className="text-sm text-gray-600">
+                        <a 
+                          href={`https://www.expedia.com/Hotel-Search?destination=${encodeURIComponent(tripData.destination || '')}&startDate=${tripData.startDate || ''}&endDate=${tripData.endDate || ''}&adults=${tripData.groupCount || 1}&AFFCID=${process.env.NEXT_PUBLIC_EXPEDIA_AFFILIATE_CODE || 'ruMM23K'}`}
+                          target="_blank" 
+                          rel="noopener noreferrer"
+                          className="text-indigo-600 hover:underline"
+                        >
+                          Secure your stay early
+                        </a> for the best prices and availability.
+                      </p>
                     </div>
                   </div>
                   
@@ -400,7 +407,24 @@ const saveTrip = async () => {
                     </div>
                     <div>
                       <h3 className="font-semibold">Arrange Transportation</h3>
-                      <p className="text-sm text-gray-600">Book flights, trains, or rental cars according to your itinerary.</p>
+                      <p className="text-sm text-gray-600">
+                        <a 
+                          href={`https://www.skyscanner.com/transport/flights/${tripData.destination ? encodeURIComponent(tripData.destination) : ''}?adults=${tripData.groupCount || 1}&affiliateId=${process.env.NEXT_PUBLIC_SKYSCANNER_AFFILIATE_CODE || 'default'}`}
+                          target="_blank" 
+                          rel="noopener noreferrer"
+                          className="text-indigo-600 hover:underline"
+                        >
+                          Book flights
+                        </a> or check out 
+                        <a 
+                          href={`https://www.villiersjets.com/?id=${process.env.NEXT_PUBLIC_VILLIERS_AFFILIATE_CODE || '10982'}`}
+                          target="_blank" 
+                          rel="noopener noreferrer"
+                          className="text-indigo-600 hover:underline ml-1"
+                        >
+                          premium private jet options
+                        </a> for the ultimate travel experience.
+                      </p>
                     </div>
                   </div>
                   

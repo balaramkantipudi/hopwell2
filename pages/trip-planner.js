@@ -1,563 +1,189 @@
-import { useState, useEffect } from 'react';
-import { useRouter } from 'next/router';
-import Head from 'next/head';
-import DatePicker from 'react-datepicker';
+// pages/trip-planner.js
+import { useState, useEffect } from "react";
+import { useRouter } from "next/router";
+import Head from "next/head";
+import TripHeader from "@/components/TripHeader"; // Import the TripHeader
+import Footer from "@/components/Footer";
+import DatePicker from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
-import AuthLayout from '@/components/AuthLayout';
+import { useAuth } from "@/components/AuthContext";
+import { checkUserCredits } from "@/libs/creditSystem";
+import { supabase } from "@/libs/supabase";
+
+const interests = [
+  "Beaches & Relaxation",
+  "Culture & History",
+  "Food & Dining",
+  "Nature & Outdoors",
+  "Adventure & Sports",
+  "Nightlife & Entertainment",
+  "Shopping",
+  "Arts & Museums",
+  "Family Friendly",
+  "Local Experiences"
+];
 
 export default function TripPlanner() {
+  const { user } = useAuth();
   const router = useRouter();
-  const [step, setStep] = useState(1);
-  const [isGenerating, setIsGenerating] = useState(false);
+  const [userCredits, setUserCredits] = useState(0);
+  const [nextResetDate, setNextResetDate] = useState('');
+  const [creditCheckDone, setCreditCheckDone] = useState(false);
+  
   const [formData, setFormData] = useState({
-    destination: '',
-    origin: '',
-    transportMode: 'air', // Default to air travel
+    destination: "",
     startDate: null,
     endDate: null,
-    hotelStyle: '',
-    cuisine: '',
-    theme: '',
-    groupType: '',
+    budget: "moderate",
+    interests: [],
+    groupType: "solo",
     groupCount: 1
-    // Removed budget and priority
   });
-  
-  // Form validation
+
   const [errors, setErrors] = useState({});
-  
-  // Set minimum dates
-  const today = new Date();
-  const [minEndDate, setMinEndDate] = useState(today);
-  
-  // Update min end date when start date changes
+  const [isLoading, setIsLoading] = useState(false);
+  const [responseError, setResponseError] = useState("");
+
+  // Fetch user credits when component mounts
   useEffect(() => {
-    if (formData.startDate) {
-      // Set minimum end date to be the selected start date
-      setMinEndDate(formData.startDate);
+    if (user) {
+      fetchUserCredits();
+    }
+  }, [user]);
+
+  const fetchUserCredits = async () => {
+    try {
+      const creditCheck = await checkUserCredits(user.id, 0);
+      setUserCredits(creditCheck.currentCredits);
       
-      // If current end date is before new start date, update it
-      if (formData.endDate && formData.endDate < formData.startDate) {
-        setFormData({
-          ...formData,
-          endDate: formData.startDate
-        });
-      }
-    }
-  }, [formData.startDate]);
-  
-  // Auto-set group count based on group type
-  useEffect(() => {
-    if (formData.groupType === 'solo') {
-      setFormData({
-        ...formData,
-        groupCount: 1
-      });
-    } else if (formData.groupType === 'couple') {
-      setFormData({
-        ...formData,
-        groupCount: 2
-      });
-    }
-  }, [formData.groupType]);
-
-  const handleChange = (e) => {
-    const { name, value } = e.target;
-    setFormData({
-      ...formData,
-      [name]: value
-    });
-    
-    // Clear validation error when field is updated
-    if (errors[name]) {
-      setErrors({
-        ...errors,
-        [name]: null
-      });
-    }
-  };
-  
-  // Handle date changes from DatePicker
-  const handleDateChange = (name, date) => {
-    setFormData({
-      ...formData,
-      [name]: date
-    });
-    
-    // Clear validation error when field is updated
-    if (errors[name]) {
-      setErrors({
-        ...errors,
-        [name]: null
-      });
+      // Fetch the last reset date to calculate next reset
+      const { data, error } = await supabase
+        .from('user_credits')
+        .select('last_credit_reset')
+        .eq('user_id', user.id)
+        .single();
+        
+      if (error) throw error;
+      
+      // Calculate next reset date
+      const lastReset = data?.last_credit_reset ? new Date(data.last_credit_reset) : new Date();
+      const nextReset = new Date(lastReset);
+      nextReset.setMonth(nextReset.getMonth() + 1);
+      nextReset.setDate(1);
+      setNextResetDate(nextReset.toLocaleDateString());
+      
+      setCreditCheckDone(true);
+    } catch (error) {
+      console.error('Error fetching user credits:', error);
+      setUserCredits(0);
+      setCreditCheckDone(true);
     }
   };
 
-  const validateStep = (stepNumber) => {
+  const validateForm = () => {
     const newErrors = {};
     
-    switch (stepNumber) {
-      case 1:
-        if (!formData.destination.trim()) newErrors.destination = 'Destination is required';
-        if (!formData.origin.trim()) newErrors.origin = 'Origin is required';
-        if (!formData.transportMode) newErrors.transportMode = 'Please select a transportation method';
-        if (!formData.startDate) newErrors.startDate = 'Start date is required';
-        if (!formData.endDate) newErrors.endDate = 'End date is required';
-        break;
-      case 2:
-        if (!formData.hotelStyle) newErrors.hotelStyle = 'Please select accommodation preference';
-        if (!formData.theme) newErrors.theme = 'Please select a trip theme';
-        if (!formData.groupType) newErrors.groupType = 'Please select a group type';
-        if (formData.groupType !== 'solo' && formData.groupType !== 'couple' && (!formData.groupCount || formData.groupCount < 1)) {
-          newErrors.groupCount = 'Please enter a valid number of people';
-        }
-        break;
+    if (!formData.destination.trim()) {
+      newErrors.destination = "Destination is required";
     }
     
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
 
-  const nextStep = () => {
-    if (validateStep(step)) {
-      setStep(step + 1);
-    }
+  const handleChange = (e) => {
+    const { name, value } = e.target;
+    setFormData((prev) => ({
+      ...prev,
+      [name]: value
+    }));
   };
 
-  const prevStep = () => {
-    setStep(step - 1);
-  };
-  
-  // Save form data to localStorage
-  const saveFormDataToStorage = () => {
-    // Convert dates to ISO strings for storage
-    const dataToStore = {
-      ...formData,
-      startDate: formData.startDate ? formData.startDate.toISOString() : null,
-      endDate: formData.endDate ? formData.endDate.toISOString() : null
-    };
-    localStorage.setItem('tripFormData', JSON.stringify(dataToStore));
+  const handleDateChange = (dateType, date) => {
+    setFormData((prev) => ({
+      ...prev,
+      [dateType]: date
+    }));
   };
 
-  // const handleSubmit = async (e) => {
-  //   e.preventDefault();
-  //   if (!validateStep(step)) return;
-    
-  //   setStep(3); // Show loading state (now step 3 because we removed step 4)
-  //   setIsGenerating(true);
-    
-  //   // Save form data to localStorage first
-  //   saveFormDataToStorage();
-    
-  //   try {
-  //     // Format dates for API
-  //     const dataToSend = {
-  //       ...formData,
-  //       startDate: formData.startDate ? formData.startDate.toISOString() : null,
-  //       endDate: formData.endDate ? formData.endDate.toISOString() : null,
-  //       // Add default values for required API parameters that were removed from the form
-  //       budget: '1000', // Default budget value
-  //       priority: 'experience' // Default priority value
-  //     };
+  const handleInterestChange = (interest) => {
+    setFormData((prev) => {
+      const newInterests = [...prev.interests];
       
-  //     // Send data to our API endpoint
-  //     const res = await fetch('/api/direct-itinerary', {
-  //       method: 'POST',
-  //       headers: {
-  //         'Content-Type': 'application/json',
-  //       },
-  //       body: JSON.stringify(dataToSend),
-  //     });
-      
-  //     // Parse response as text first to debug any issues
-  //     const responseText = await res.text();
-      
-  //     // Try to parse as JSON
-  //     let data;
-  //     try {
-  //       data = JSON.parse(responseText);
-  //     } catch (error) {
-  //       console.error('Failed to parse response as JSON:', responseText);
-  //       throw new Error('Invalid response from server. Please try again.');
-  //     }
-      
-  //     if (!res.ok) {
-  //       throw new Error(data.error || 'Failed to generate itinerary');
-  //     }
-      
-  //     if (!data.text) {
-  //       throw new Error('No itinerary text received from API');
-  //     }
-      
-  //     // Store the generated itinerary in localStorage
-  //     localStorage.setItem('itineraryAndBudget', data.text);
-      
-  //     // Wait a moment to show the loading screen, then redirect to results
-  //     setTimeout(() => {
-  //       router.push('/plan-my-trip/results');
-  //     }, 2000);
-      
-  //   } catch (error) {
-  //     console.error('Itinerary generation error:', error);
-  //     setStep(2); // Go back to the previous step to allow retry
-  //     setIsGenerating(false);
-      
-  //     // Show an error alert with more details
-  //     alert(`Failed to generate itinerary: ${error.message}. Please try again.`);
-  //   }
-  // };
-// Updated handleSubmit function for trip-planner.js
-const handleSubmit = async (e) => {
-  e.preventDefault();
-  if (!validateStep(step)) return;
-  
-  setStep(3); // Show loading state
-  setIsGenerating(true);
-  
-  // Save form data to localStorage first
-  saveFormDataToStorage();
-  
-  try {
-    // Format dates for API
-    const dataToSend = {
-      ...formData,
-      startDate: formData.startDate ? formData.startDate.toISOString() : null,
-      endDate: formData.endDate ? formData.endDate.toISOString() : null,
-      // Add default values for any required parameters
-      budget: formData.budget || '1000',
-      priority: formData.priority || 'experience'
-    };
-    
-    console.log("Sending data to API:", dataToSend);
-    
-    // Send data to our API endpoint
-    const res = await fetch('/api/direct-itinerary', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(dataToSend),
-      // Include credentials to send cookies (important for auth)
-      credentials: 'include'
+      if (newInterests.includes(interest)) {
+        return {
+          ...prev,
+          interests: newInterests.filter(item => item !== interest)
+        };
+      } else {
+        return {
+          ...prev,
+          interests: [...newInterests, interest]
+        };
+      }
     });
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
     
-    // Get response text first to debug any issues
-    const responseText = await res.text();
-    console.log("Raw API response:", responseText);
+    if (!user) {
+      // Redirect to sign in if not logged in
+      router.push("/auth/signin?redirect=trip-planner");
+      return;
+    }
     
-    // Try to parse as JSON
-    let data;
+    // Check if user has enough credits
+    if (userCredits < 1) {
+      setResponseError("You don't have enough credits to generate an itinerary.");
+      return;
+    }
+    
+    if (!validateForm()) {
+      return;
+    }
+    
+    setIsLoading(true);
+    setResponseError("");
+    
     try {
-      data = JSON.parse(responseText);
-    } catch (parseError) {
-      console.error('Failed to parse response as JSON:', responseText);
-      throw new Error(`Invalid JSON response: ${responseText.substring(0, 100)}...`);
-    }
-    
-    // Handle API errors
-    if (!res.ok) {
-      console.error('API error response:', data);
-      throw new Error(data.error || data.message || 'Failed to generate itinerary');
-    }
-    
-    if (!data.text) {
-      throw new Error('No itinerary text received from API');
-    }
-    
-    // Store the generated itinerary in localStorage
-    localStorage.setItem('itineraryAndBudget', data.text);
-    
-    // Add a small delay to show the loading state
-    setTimeout(() => {
-      // Navigate to results page
-      router.push('/plan-my-trip/results');
-    }, 1500);
-    
-  } catch (error) {
-    console.error('Itinerary generation error:', error);
-    setStep(2); // Go back to the previous step
-    setIsGenerating(false);
-    
-    // Show error message
-    alert(`Failed to generate itinerary: ${error.message}. Please try again.`);
-  }
-};
-  const renderStep = () => {
-    switch (step) {
-      case 1:
-        return (
-          <div className="p-6 bg-white rounded-lg shadow-md">
-            <h2 className="text-2xl font-bold mb-6 text-indigo-900">Where are you going?</h2>
-            
-            <div className="mb-4">
-              <label className="block text-gray-700 font-medium mb-2">Destination <span className="text-red-500">*</span></label>
-              <input
-                type="text"
-                name="destination"
-                value={formData.destination}
-                onChange={handleChange}
-                placeholder="City, Country"
-                className={`w-full p-3 border ${errors.destination ? 'border-red-500' : 'border-gray-300'} bg-white rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500`}
-              />
-              {errors.destination && <p className="text-red-500 text-sm mt-1">{errors.destination}</p>}
-            </div>
-            
-            <div className="mb-4">
-              <label className="block text-gray-700 font-medium mb-2">Origin <span className="text-red-500">*</span></label>
-              <input
-                type="text"
-                name="origin"
-                value={formData.origin}
-                onChange={handleChange}
-                placeholder="Where are you starting from?"
-                className={`w-full p-3 border ${errors.origin ? 'border-red-500' : 'border-gray-300'} bg-white rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500`}
-              />
-              {errors.origin && <p className="text-red-500 text-sm mt-1">{errors.origin}</p>}
-            </div>
-            
-            <div className="mb-4">
-              <div className="flex items-center justify-between mb-1">
-                <label className="block text-gray-700 font-medium">Transportation Method <span className="text-red-500">*</span></label>
-                <div className="flex items-center space-x-4">
-                  <label className="inline-flex items-center">
-                    <input
-                      type="radio"
-                      name="transportMode"
-                      value="air"
-                      checked={formData.transportMode === 'air'}
-                      onChange={handleChange}
-                      className="hidden"
-                    />
-                    <span className={`px-3 py-1 rounded-full text-sm font-medium cursor-pointer transition-colors ${formData.transportMode === 'air' ? 'bg-indigo-100 text-indigo-700 ring-2 ring-indigo-600' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}>
-                      Airways
-                    </span>
-                  </label>
-                  
-                  <label className="inline-flex items-center">
-                    <input
-                      type="radio"
-                      name="transportMode"
-                      value="drive"
-                      checked={formData.transportMode === 'drive'}
-                      onChange={handleChange}
-                      className="hidden"
-                    />
-                    <span className={`px-3 py-1 rounded-full text-sm font-medium cursor-pointer transition-colors ${formData.transportMode === 'drive' ? 'bg-indigo-100 text-indigo-700 ring-2 ring-indigo-600' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}>
-                      Drive
-                    </span>
-                  </label>
-                  
-                  <label className="inline-flex items-center">
-                    <input
-                      type="radio"
-                      name="transportMode"
-                      value="public"
-                      checked={formData.transportMode === 'public'}
-                      onChange={handleChange}
-                      className="hidden"
-                    />
-                    <span className={`px-3 py-1 rounded-full text-sm font-medium cursor-pointer transition-colors ${formData.transportMode === 'public' ? 'bg-indigo-100 text-indigo-700 ring-2 ring-indigo-600' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}>
-                      Public
-                    </span>
-                  </label>
-                </div>
-              </div>
-              {errors.transportMode && <p className="text-red-500 text-sm mt-1">{errors.transportMode}</p>}
-            </div>
-            
-            <div className="grid grid-cols-2 gap-4 mb-6">
-              <div>
-                <label className="block text-gray-700 font-medium mb-2">Start Date <span className="text-red-500">*</span></label>
-                <DatePicker
-                  selected={formData.startDate}
-                  onChange={(date) => handleDateChange('startDate', date)}
-                  minDate={today}
-                  placeholderText="Select start date"
-                  dateFormat="MMMM d, yyyy"
-                  className={`w-full p-3 border ${errors.startDate ? 'border-red-500' : 'border-gray-300'} bg-white rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500`}
-                />
-                {errors.startDate && <p className="text-red-500 text-sm mt-1">{errors.startDate}</p>}
-              </div>
-              <div>
-                <label className="block text-gray-700 font-medium mb-2">End Date <span className="text-red-500">*</span></label>
-                <DatePicker
-                  selected={formData.endDate}
-                  onChange={(date) => handleDateChange('endDate', date)}
-                  minDate={formData.startDate || today}
-                  placeholderText="Select end date"
-                  dateFormat="MMMM d, yyyy"
-                  className={`w-full p-3 border ${errors.endDate ? 'border-red-500' : 'border-gray-300'} bg-white rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500`}
-                  disabled={!formData.startDate}
-                />
-                {errors.endDate && <p className="text-red-500 text-sm mt-1">{errors.endDate}</p>}
-                {!formData.startDate && !errors.endDate && (
-                  <p className="text-gray-500 text-sm mt-1">Please select a start date first</p>
-                )}
-              </div>
-            </div>
-            
-            <div className="flex justify-end">
-              <button
-                onClick={nextStep}
-                className="bg-indigo-600 text-white py-3 px-6 rounded-lg hover:bg-indigo-700 transition duration-300"
-              >
-                Next
-              </button>
-            </div>
-          </div>
-        );
-        
-      case 2:
-        return (
-          <div className="p-6 bg-white rounded-lg shadow-md">
-            <h2 className="text-2xl font-bold mb-6 text-indigo-900">Trip Details & Preferences</h2>
-            
-            {/* Trip Style Section */}
-            <div className="mb-6">
-              <h3 className="text-lg font-semibold mb-4 text-indigo-700 border-b pb-2">Trip Style</h3>
-              
-              <div className="mb-4">
-                <label className="block text-gray-700 font-medium mb-2">Accommodation Preference <span className="text-red-500">*</span></label>
-                <select
-                  name="hotelStyle"
-                  value={formData.hotelStyle}
-                  onChange={handleChange}
-                  className={`w-full p-3 border ${errors.hotelStyle ? 'border-red-500' : 'border-gray-300'} bg-white rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500`}
-                >
-                  <option value="">Select your preference</option>
-                  <option value="ultraLuxury">Ultra Luxury</option>
-                  <option value="luxury">Luxury</option>
-                  <option value="comfortable">Comfortable</option>
-                  <option value="budget">Budget</option>
-                  <option value="experience">Unique Experience</option>
-                </select>
-                {errors.hotelStyle && <p className="text-red-500 text-sm mt-1">{errors.hotelStyle}</p>}
-              </div>
-              
-              <div className="mb-4">
-                <label className="block text-gray-700 font-medium mb-2">Cuisine Preferences</label>
-                <input
-                  type="text"
-                  name="cuisine"
-                  value={formData.cuisine}
-                  onChange={handleChange}
-                  placeholder="What cuisines do you enjoy?"
-                  className="w-full p-3 border border-gray-300 bg-white rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                />
-              </div>
-              
-              <div className="mb-4">
-                <label className="block text-gray-700 font-medium mb-2">Trip Theme <span className="text-red-500">*</span></label>
-                <select
-                  name="theme"
-                  value={formData.theme}
-                  onChange={handleChange}
-                  className={`w-full p-3 border ${errors.theme ? 'border-red-500' : 'border-gray-300'} bg-white rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500`}
-                >
-                  <option value="">Select a theme</option>
-                  <option value="relaxation">Relaxation & Vibe</option>
-                  <option value="adventure">Indoor & Outdoor Adventure</option>
-                  <option value="sightseeing">Downtown Sightseeing</option>
-                  <option value="religious">Religious</option>
-                  <option value="sports">Sports & Games</option>
-                  <option value="historic">Historic Sightseeing</option>
-                  <option value="unique">Unique & Must-See</option>
-                  <option value="nature">Trekking & Nature</option>
-                  <option value="honeymoon">Honeymoon</option>
-                  <option value="camping">Camping & Nature Stay</option>
-                  <option value="nightlife">Nightlife & Concerts</option>
-                  <option value="photoshoot">Photo Shoot</option>
-                </select>
-                {errors.theme && <p className="text-red-500 text-sm mt-1">{errors.theme}</p>}
-              </div>
-            </div>
-            
-            {/* Group Information Section */}
-            <div className="mb-6">
-              <h3 className="text-lg font-semibold mb-4 text-indigo-700 border-b pb-2">Group Information</h3>
-              
-              <div className="mb-4">
-                <label className="block text-gray-700 font-medium mb-2">Group Type <span className="text-red-500">*</span></label>
-                <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
-                  {['solo', 'couple', 'family', 'friends', 'work'].map((type) => (
-                    <label key={type} className="inline-flex items-center">
-                      <input
-                        type="radio"
-                        name="groupType"
-                        value={type}
-                        checked={formData.groupType === type}
-                        onChange={handleChange}
-                        className="hidden"
-                      />
-                      <span className={`w-full text-center px-3 py-2 rounded-md text-sm font-medium cursor-pointer transition-colors ${formData.groupType === type ? 'bg-indigo-100 text-indigo-700 ring-2 ring-indigo-600' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}>
-                        {type.charAt(0).toUpperCase() + type.slice(1)}
-                      </span>
-                    </label>
-                  ))}
-                </div>
-                {errors.groupType && <p className="text-red-500 text-sm mt-1">{errors.groupType}</p>}
-              </div>
-              
-              {/* Conditionally show group count field only for group types other than solo and couple */}
-              {formData.groupType && formData.groupType !== 'solo' && formData.groupType !== 'couple' && (
-                <div className="mb-4">
-                  <label className="block text-gray-700 font-medium mb-2">Number of People <span className="text-red-500">*</span></label>
-                  <input
-                    type="number"
-                    name="groupCount"
-                    value={formData.groupCount}
-                    onChange={handleChange}
-                    min="1"
-                    className={`w-full p-3 border ${errors.groupCount ? 'border-red-500' : 'border-gray-300'} bg-white rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500`}
-                  />
-                  {errors.groupCount && <p className="text-red-500 text-sm mt-1">{errors.groupCount}</p>}
-                </div>
-              )}
-              
-              {/* Display selected number of people */}
-              {formData.groupType && (
-                <div className="mb-4 p-4 bg-indigo-50 rounded-lg">
-                  <p className="text-indigo-700">
-                    <span className="font-semibold">Selected group:</span> {formData.groupType === 'solo' ? 'Solo traveler (1 person)' : 
-                                                       formData.groupType === 'couple' ? 'Couple (2 people)' : 
-                                                       `${formData.groupType} (${formData.groupCount} people)`}
-                  </p>
-                </div>
-              )}
-            </div>
-            
-            <div className="flex justify-between">
-              <button
-                onClick={prevStep}
-                className="border border-gray-300 bg-white text-gray-700 py-3 px-6 rounded-lg hover:bg-gray-100 transition duration-300"
-              >
-                Back
-              </button>
-              <button
-                onClick={handleSubmit}
-                className="bg-green-600 text-white py-3 px-6 rounded-lg hover:bg-green-700 transition duration-300"
-              >
-                Create My Trip
-              </button>
-            </div>
-          </div>
-        );
-        
-      case 3: // Now just the loading screen
-        return (
-          <div className="p-6 bg-white rounded-lg shadow-md text-center">
-            <div className="text-green-600 text-6xl mb-4">✓</div>
-            <h2 className="text-2xl font-bold mb-4">Your trip is being created!</h2>
-            <p className="mb-6">Our AI is generating your personalized itinerary. This may take up to a minute.</p>
-            <div className="w-full h-4 bg-gray-200 rounded-full mb-6">
-              <div className="h-4 bg-indigo-600 rounded-full animate-pulse w-3/4"></div>
-            </div>
-            <p className="text-gray-500">We're finding the best options based on your preferences.</p>
-          </div>
-        );
-        
-      default:
-        return null;
+      // Save form data to localStorage
+      localStorage.setItem("tripFormData", JSON.stringify(formData));
+      
+      // Call the generate-itinerary API
+      const response = await fetch("/api/generate-itinerary", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify(formData)
+      });
+      
+      const data = await response.json();
+      
+      if (!response.ok) {
+        throw new Error(data.error || "Failed to generate itinerary");
+      }
+      
+      // Update the local credit count
+      if (data.creditsRemaining !== undefined) {
+        setUserCredits(data.creditsRemaining);
+      } else {
+        // Fallback if server doesn't return the new balance
+        setUserCredits(prev => Math.max(0, prev - 1));
+      }
+      
+      // Store the generated itinerary in localStorage
+      localStorage.setItem("itineraryAndBudget", data.itinerary);
+      
+      // Redirect to the results page
+      router.push("/plan-my-trip/results");
+      
+    } catch (error) {
+      console.error("Error generating itinerary:", error);
+      setResponseError(error.message || "Failed to generate itinerary. Please try again.");
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -566,528 +192,214 @@ const handleSubmit = async (e) => {
       <Head>
         <title>Plan Your Trip | Hopwell</title>
       </Head>
+
+      {/* Use the TripHeader component */}
+      <TripHeader />
       
-      <div className="min-h-screen bg-yellow-50 py-12">
-        <div className="max-w-4xl mx-auto px-4">
-          <div className="text-center mb-8">
-            <h1 className="text-3xl font-bold text-indigo-900">Plan Your Perfect Trip</h1>
-            <p className="mt-2 text-gray-600">Tell us about your preferences, and we'll create a personalized itinerary</p>
-          </div>
-          
-          {/* {step < 3 && (
-            <div className="mb-8">
-              <div className="flex items-center justify-between mb-4">
-                <span className="text-sm font-medium text-gray-500">Step {step} of 2</span>
-                <div className="w-2/3 h-2 bg-gray-200 rounded-full">
-                  <div 
-                    className="h-2 bg-indigo-600 rounded-full" 
-                    style={{ width: `${(step / 2) * 100}%` }}
-                  ></div>
+      <div className="bg-gray-50 min-h-screen py-8">
+        <div className="container mx-auto px-4">
+          <div className="max-w-4xl mx-auto">
+            <div className="text-center mb-8">
+              <h1 className="text-3xl md:text-4xl font-bold text-gray-900">Plan Your Dream Trip</h1>
+              <p className="mt-2 text-gray-600">Tell us about your travel preferences and we'll create a personalized itinerary</p>
+            </div>
+            
+            {/* Monthly Credit Information */}
+            {creditCheckDone && (
+              <div className="mb-6 text-center">
+                <div className="inline-flex items-center px-4 py-2 rounded-full bg-indigo-50 text-indigo-700">
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  You get <span className="font-bold mx-1">30</span> free credits each month. Next reset: {nextResetDate}
                 </div>
               </div>
-            </div>
-          )} */}
-          
-          {renderStep()}
+            )}
+            
+            {responseError && (
+              <div className="mb-6 p-4 bg-red-50 text-red-700 rounded-lg">
+                {responseError}
+              </div>
+            )}
+            
+            <form onSubmit={handleSubmit} className="bg-white shadow-lg rounded-lg overflow-hidden">
+              <div className="p-6 md:p-8">
+                <div className="space-y-6">
+                  {/* Destination */}
+                  <div>
+                    <label htmlFor="destination" className="block text-gray-700 font-medium mb-2">Where do you want to go?</label>
+                    <input
+                      type="text"
+                      id="destination"
+                      name="destination"
+                      value={formData.destination}
+                      onChange={handleChange}
+                      placeholder="City, Country, or Region"
+                      className={`w-full p-3 border rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none transition
+                       bg-white text-gray-900 ${errors.destination ? 'border-red-500' : 'border-gray-300'}`}
+                    />
+                    {errors.destination && (
+                      <p className="mt-1 text-red-500 text-sm">{errors.destination}</p>
+                    )}
+                  </div>
+                  
+                  {/* Date Range */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label htmlFor="startDate" className="block text-gray-700 font-medium mb-2">Start Date</label>
+                      <DatePicker
+                        id="startDate"
+                        selected={formData.startDate}
+                        onChange={(date) => handleDateChange("startDate", date)}
+                        selectsStart
+                        startDate={formData.startDate}
+                        endDate={formData.endDate}
+                        minDate={new Date()}
+                        placeholderText="Select start date"
+                        className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none transition bg-white text-gray-900"
+                      />
+                    </div>
+                    <div>
+                      <label htmlFor="endDate" className="block text-gray-700 font-medium mb-2">End Date</label>
+                      <DatePicker
+                        id="endDate"
+                        selected={formData.endDate}
+                        onChange={(date) => handleDateChange("endDate", date)}
+                        selectsEnd
+                        startDate={formData.startDate}
+                        endDate={formData.endDate}
+                        minDate={formData.startDate || new Date()}
+                        placeholderText="Select end date"
+                        className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none transition bg-white text-gray-900"
+                      />
+                    </div>
+                  </div>
+                  
+                  {/* Budget */}
+                  <div>
+                    <label className="block text-gray-700 font-medium mb-2">Budget</label>
+                    <div className="grid grid-cols-3 gap-4">
+                      {['budget', 'moderate', 'luxury'].map((option) => (
+                        <div key={option} className="relative">
+                          <input
+                            type="radio"
+                            id={option}
+                            name="budget"
+                            value={option}
+                            checked={formData.budget === option}
+                            onChange={handleChange}
+                            className="sr-only"
+                          />
+                          <label
+                            htmlFor={option}
+                            className={`block p-3 text-center border rounded-lg cursor-pointer transition ${
+                              formData.budget === option ? 'bg-indigo-50 border-indigo-500 text-indigo-700' : 'border-gray-300 hover:border-indigo-300'
+                            }`}
+                          >
+                            {option.charAt(0).toUpperCase() + option.slice(1)}
+                          </label>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                  
+                  {/* Interests */}
+                  <div>
+                    <label className="block text-gray-700 font-medium mb-2">Interests (Select all that apply)</label>
+                    <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                      {interests.map((interest) => (
+                        <div key={interest} className="relative">
+                          <input
+                            type="checkbox"
+                            id={interest}
+                            name="interests"
+                            value={interest}
+                            checked={formData.interests.includes(interest)}
+                            onChange={() => handleInterestChange(interest)}
+                            className="sr-only"
+                          />
+                          <label
+                            htmlFor={interest}
+                            className={`block p-3 text-center border rounded-lg cursor-pointer text-sm transition ${
+                              formData.interests.includes(interest) ? 'bg-indigo-50 border-indigo-500 text-indigo-700' : 'border-gray-300 hover:border-indigo-300'
+                            }`}
+                          >
+                            {interest}
+                          </label>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                  
+                  {/* Group */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label htmlFor="groupType" className="block text-gray-700 font-medium mb-2">Traveling As</label>
+                      <select
+                        id="groupType"
+                        name="groupType"
+                        value={formData.groupType}
+                        onChange={handleChange}
+                        className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none transition bg-white text-gray-900"
+                      >
+                        <option value="solo">Solo Traveler</option>
+                        <option value="couple">Couple</option>
+                        <option value="family">Family</option>
+                        <option value="friends">Friends</option>
+                        <option value="business">Business</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label htmlFor="groupCount" className="block text-gray-700 font-medium mb-2">Number of Travelers</label>
+                      <input
+                        type="number"
+                        id="groupCount"
+                        name="groupCount"
+                        value={formData.groupCount}
+                        onChange={handleChange}
+                        min="1"
+                        max="20"
+                        className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none transition bg-white text-gray-900"
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
+              
+              <div className="bg-gray-50 p-6 flex justify-between items-center">
+                <div className="text-sm text-gray-500">
+                  {userCredits > 0 ? (
+                    <span>This will use 1 credit from your monthly allowance</span>
+                  ) : (
+                    <span className="text-red-500">You need at least 1 credit to generate an itinerary</span>
+                  )}
+                </div>
+                <button
+                  type="submit"
+                  disabled={isLoading || userCredits < 1}
+                  className={`px-6 py-3 rounded-lg font-medium flex items-center ${
+                    isLoading || userCredits < 1 ? 'bg-gray-400 cursor-not-allowed' : 'bg-indigo-600 hover:bg-indigo-700 text-white'
+                  }`}
+                >
+                  {isLoading ? (
+                    <>
+                      <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                      </svg>
+                      Generating...
+                    </>
+                  ) : (
+                    'Create My Itinerary'
+                  )}
+                </button>
+              </div>
+            </form>
+          </div>
         </div>
       </div>
+
+      <Footer />
     </>
   );
 }
-
-TripPlanner.getLayout = function getLayout(page) {
-  return <AuthLayout>{page}</AuthLayout>;
-};
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-// // pages/trip-planner.js (Updated to use direct-itinerary API)
-// import { useState } from 'react';
-// import { useRouter } from 'next/router';
-// import Head from 'next/head';
-// import AuthLayout from '@/components/AuthLayout';
-
-// export default function TripPlanner() {
-//   const router = useRouter();
-//   const [step, setStep] = useState(1);
-//   const [isGenerating, setIsGenerating] = useState(false);
-//   const [formData, setFormData] = useState({
-//     destination: '',
-//     origin: '',
-//     transportMode: '',
-//     startDate: '',
-//     endDate: '',
-//     hotelStyle: '',
-//     cuisine: '',
-//     theme: '',
-//     groupType: '',
-//     groupCount: 1,
-//     budget: '',
-//     priority: ''
-//   });
-
-//   const handleChange = (e) => {
-//     const { name, value } = e.target;
-//     setFormData({
-//       ...formData,
-//       [name]: value
-//     });
-//   };
-
-//   const nextStep = () => {
-//     setStep(step + 1);
-//   };
-
-//   const prevStep = () => {
-//     setStep(step - 1);
-//   };
-
-//   const handleSubmit = async (e) => {
-//     e.preventDefault();
-//     setStep(5); // Show the loading screen
-//     setIsGenerating(true);
-    
-//     // Save form data to localStorage
-//     const dataToStore = {
-//       ...formData,
-//       startDate: formData.startDate,
-//       endDate: formData.endDate
-//     };
-//     localStorage.setItem('tripFormData', JSON.stringify(dataToStore));
-    
-//     try {
-//       console.log("Submitting form data to direct-itinerary API...");
-      
-//       // Use the direct-itinerary API that we know works
-//       const res = await fetch('/api/direct-itinerary', {
-//         method: 'POST',
-//         headers: {
-//           'Content-Type': 'application/json',
-//         },
-//         body: JSON.stringify(formData),
-//       });
-      
-//       console.log("API Response status:", res.status);
-      
-//       // Get response as text
-//       const responseText = await res.text();
-//       console.log("Received response length:", responseText.length);
-      
-//       // Parse JSON response
-//       let data;
-//       try {
-//         data = JSON.parse(responseText);
-//       } catch (error) {
-//         console.error('Failed to parse JSON:', responseText.substring(0, 200));
-//         throw new Error('Invalid response format from server');
-//       }
-      
-//       // Check if response has the expected structure
-//       if (!data || !data.text) {
-//         throw new Error('Missing itinerary text in response');
-//       }
-      
-//       // Store the itinerary text in localStorage
-//       localStorage.setItem('itineraryAndBudget', data.text);
-//       console.log('Successfully stored itinerary in localStorage');
-      
-//       // Navigate to results page
-//       setTimeout(() => {
-//         router.push('/plan-my-trip/results');
-//       }, 1000);
-      
-//     } catch (error) {
-//       console.error('Error generating itinerary:', error);
-      
-//       // Try fallback generation directly in the browser
-//       try {
-//         console.log('Using fallback generation directly in browser');
-        
-//         // Simple fallback generation
-//         const fallbackItinerary = `
-// FALLBACK ITINERARY FOR ${formData.destination.toUpperCase()}
-// ========================================
-
-// We encountered a temporary issue creating your detailed itinerary, but here's a basic plan for your trip to ${formData.destination}:
-
-// DAY 1: ARRIVAL
-// -------------
-// - Arrive in ${formData.destination}
-// - Check into your accommodation
-// - Explore the immediate area around your hotel
-// - Have dinner at a local restaurant to experience the cuisine
-
-// DAY 2: EXPLORATION
-// ----------------
-// - Visit the main attractions in ${formData.destination}
-// - Enjoy lunch at a recommended local spot
-// - Explore markets or museums in the afternoon
-// - Dinner featuring local specialties
-
-// ${formData.endDate && formData.startDate ? 
-//   `DAY 3 TO DAY ${Math.ceil((new Date(formData.endDate) - new Date(formData.startDate)) / (1000 * 60 * 60 * 24))}: CONTINUED EXPLORATION
-// ----------------------------------------
-// - Mix of cultural sites, natural attractions, and local experiences
-// - Try different restaurants and cuisines
-// - Consider day trips to nearby destinations
-// - Allow some free time for shopping or relaxation` 
-//   : 
-//   `ADDITIONAL DAYS:
-// --------------
-// - Continue exploring at your own pace
-// - Mix cultural visits with relaxation time
-// - Try various local restaurants
-// - Consider day trips to nearby attractions`
-// }
-
-// ESTIMATED BUDGET:
-// ---------------
-// - Accommodation: $100-300 per night depending on your preferences
-// - Meals: $30-80 per person per day
-// - Activities: $20-50 per person per day
-// - Local transportation: $10-30 per day
-
-// Please try again later for a more detailed itinerary. Enjoy your trip to ${formData.destination}!
-//         `;
-        
-//         localStorage.setItem('itineraryAndBudget', fallbackItinerary);
-        
-//         setTimeout(() => {
-//           router.push('/plan-my-trip/results');
-//         }, 1000);
-//       } catch (fallbackError) {
-//         console.error('Fallback generation failed:', fallbackError);
-//         setStep(4); // Go back to the previous step
-//         setIsGenerating(false);
-//         alert(`Failed to generate itinerary. Please try again.`);
-//       }
-//     }
-//   };
-
-//   const renderStep = () => {
-//     switch (step) {
-//       case 1:
-//         return (
-//           <div className="p-6 bg-white rounded-lg shadow-md">
-//             <h2 className="text-2xl font-bold mb-6 text-indigo-900">Where are you going?</h2>
-            
-//             <div className="mb-4">
-//               <label className="block text-gray-700 font-medium mb-2">Destination <span className="text-red-500">*</span></label>
-//               <input
-//                 type="text"
-//                 name="destination"
-//                 value={formData.destination}
-//                 onChange={handleChange}
-//                 placeholder="City, Country (e.g., Paris, France)"
-//                 className="w-full p-3 border border-gray-300 bg-white rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
-//                 required
-//               />
-//             </div>
-            
-//             <div className="mb-4">
-//               <label className="block text-gray-700 font-medium mb-2">Origin</label>
-//               <input
-//                 type="text"
-//                 name="origin"
-//                 value={formData.origin}
-//                 onChange={handleChange}
-//                 placeholder="Where are you starting from?"
-//                 className="w-full p-3 border border-gray-300 bg-white rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
-//               />
-//             </div>
-            
-//             <div className="mb-4">
-//               <label className="block text-gray-700 font-medium mb-2">Transportation Method</label>
-//               <select
-//                 name="transportMode"
-//                 value={formData.transportMode}
-//                 onChange={handleChange}
-//                 className="w-full p-3 border border-gray-300 bg-white rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
-//               >
-//                 <option value="">Select transportation</option>
-//                 <option value="air">Airways</option>
-//                 <option value="train">Train</option>
-//                 <option value="bus">Bus</option>
-//                 <option value="drive">Drive</option>
-//                 <option value="cruise">Cruise</option>
-//               </select>
-//             </div>
-            
-//             <div className="grid grid-cols-2 gap-4 mb-6">
-//               <div>
-//                 <label className="block text-gray-700 font-medium mb-2">Start Date</label>
-//                 <input
-//                   type="date"
-//                   name="startDate"
-//                   value={formData.startDate}
-//                   onChange={handleChange}
-//                   className="w-full p-3 border border-gray-300 bg-white rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
-//                 />
-//               </div>
-//               <div>
-//                 <label className="block text-gray-700 font-medium mb-2">End Date</label>
-//                 <input
-//                   type="date"
-//                   name="endDate"
-//                   value={formData.endDate}
-//                   onChange={handleChange}
-//                   className="w-full p-3 border border-gray-300 bg-white rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
-//                 />
-//               </div>
-//             </div>
-            
-//             <div className="flex justify-end">
-//               <button
-//                 onClick={nextStep}
-//                 disabled={!formData.destination}
-//                 className={`py-3 px-6 rounded-lg transition duration-300 ${
-//                   !formData.destination 
-//                     ? 'bg-gray-400 text-white cursor-not-allowed' 
-//                     : 'bg-indigo-600 text-white hover:bg-indigo-700'
-//                 }`}
-//               >
-//                 Next
-//               </button>
-//             </div>
-//           </div>
-//         );
-        
-//       case 2:
-//         return (
-//           <div className="p-6 bg-white rounded-lg shadow-md">
-//             <h2 className="text-2xl font-bold mb-6 text-indigo-900">What's your style?</h2>
-            
-//             <div className="mb-4">
-//               <label className="block text-gray-700 font-medium mb-2">Accommodation Preference</label>
-//               <select
-//                 name="hotelStyle"
-//                 value={formData.hotelStyle}
-//                 onChange={handleChange}
-//                 className="w-full p-3 border border-gray-300 bg-white rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
-//               >
-//                 <option value="">Select your preference</option>
-//                 <option value="ultraLuxury">Ultra Luxury</option>
-//                 <option value="luxury">Luxury</option>
-//                 <option value="comfortable">Comfortable</option>
-//                 <option value="budget">Budget</option>
-//                 <option value="experience">Unique Experience</option>
-//               </select>
-//             </div>
-            
-//             <div className="mb-4">
-//               <label className="block text-gray-700 font-medium mb-2">Cuisine Preferences</label>
-//               <input
-//                 type="text"
-//                 name="cuisine"
-//                 value={formData.cuisine}
-//                 onChange={handleChange}
-//                 placeholder="What cuisines do you enjoy?"
-//                 className="w-full p-3 border border-gray-300 bg-white rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
-//               />
-//             </div>
-            
-//             <div className="mb-6">
-//               <label className="block text-gray-700 font-medium mb-2">Trip Theme</label>
-//               <select
-//                 name="theme"
-//                 value={formData.theme}
-//                 onChange={handleChange}
-//                 className="w-full p-3 border border-gray-300 bg-white rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
-//               >
-//                 <option value="">Select a theme</option>
-//                 <option value="relaxation">Relaxation & Vibe</option>
-//                 <option value="adventure">Indoor & Outdoor Adventure</option>
-//                 <option value="sightseeing">Downtown Sightseeing</option>
-//                 <option value="religious">Religious</option>
-//                 <option value="sports">Sports & Games</option>
-//                 <option value="historic">Historic Sightseeing</option>
-//                 <option value="unique">Unique & Must-See</option>
-//                 <option value="nature">Trekking & Nature</option>
-//                 <option value="honeymoon">Honeymoon</option>
-//                 <option value="camping">Camping & Nature Stay</option>
-//                 <option value="nightlife">Nightlife & Concerts</option>
-//                 <option value="photoshoot">Photo Shoot</option>
-//               </select>
-//             </div>
-            
-//             <div className="flex justify-between">
-//               <button
-//                 onClick={prevStep}
-//                 className="border border-gray-300 bg-white text-gray-700 py-3 px-6 rounded-lg hover:bg-gray-100 transition duration-300"
-//               >
-//                 Back
-//               </button>
-//               <button
-//                 onClick={nextStep}
-//                 className="bg-indigo-600 text-white py-3 px-6 rounded-lg hover:bg-indigo-700 transition duration-300"
-//               >
-//                 Next
-//               </button>
-//             </div>
-//           </div>
-//         );
-        
-//       case 3:
-//         return (
-//           <div className="p-6 bg-white rounded-lg shadow-md">
-//             <h2 className="text-2xl font-bold mb-6 text-indigo-900">Tell us about your group</h2>
-            
-//             <div className="mb-4">
-//               <label className="block text-gray-700 font-medium mb-2">Group Type</label>
-//               <select
-//                 name="groupType"
-//                 value={formData.groupType}
-//                 onChange={handleChange}
-//                 className="w-full p-3 border border-gray-300 bg-white rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
-//               >
-//                 <option value="">Select group type</option>
-//                 <option value="couple">Couple</option>
-//                 <option value="family">Family</option>
-//                 <option value="friends">Friends</option>
-//                 <option value="work">Work Team</option>
-//                 <option value="solo">Solo</option>
-//               </select>
-//             </div>
-            
-//             <div className="mb-6">
-//               <label className="block text-gray-700 font-medium mb-2">Number of People</label>
-//               <input
-//                 type="number"
-//                 name="groupCount"
-//                 value={formData.groupCount}
-//                 onChange={handleChange}
-//                 min="1"
-//                 className="w-full p-3 border border-gray-300 bg-white rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
-//               />
-//             </div>
-            
-//             <div className="flex justify-between">
-//               <button
-//                 onClick={prevStep}
-//                 className="border border-gray-300 bg-white text-gray-700 py-3 px-6 rounded-lg hover:bg-gray-100 transition duration-300"
-//               >
-//                 Back
-//               </button>
-//               <button
-//                 onClick={nextStep}
-//                 className="bg-indigo-600 text-white py-3 px-6 rounded-lg hover:bg-indigo-700 transition duration-300"
-//               >
-//                 Next
-//               </button>
-//             </div>
-//           </div>
-//         );
-        
-//       case 4:
-//         return (
-//           <div className="p-6 bg-white rounded-lg shadow-md">
-//             <h2 className="text-2xl font-bold mb-6 text-indigo-900">Budget & Priorities</h2>
-            
-//             <div className="mb-4">
-//               <label className="block text-gray-700 font-medium mb-2">Budget per Person (USD)</label>
-//               <input
-//                 type="number"
-//                 name="budget"
-//                 value={formData.budget}
-//                 onChange={handleChange}
-//                 placeholder="Enter amount in USD"
-//                 className="w-full p-3 border border-gray-300 bg-white rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
-//               />
-//             </div>
-            
-//             <div className="mb-6">
-//               <label className="block text-gray-700 font-medium mb-2">Top Priority</label>
-//               <select
-//                 name="priority"
-//                 value={formData.priority}
-//                 onChange={handleChange}
-//                 className="w-full p-3 border border-gray-300 bg-white rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
-//               >
-//                 <option value="">Select your top priority</option>
-//                 <option value="budget">Budget</option>
-//                 <option value="time">Time</option>
-//                 <option value="distance">Distance</option>
-//                 <option value="experience">Experience</option>
-//                 <option value="safety">Safety</option>
-//               </select>
-//             </div>
-            
-//             <div className="flex justify-between">
-//               <button
-//                 onClick={prevStep}
-//                 className="border border-gray-300 bg-white text-gray-700 py-3 px-6 rounded-lg hover:bg-gray-100 transition duration-300"
-//               >
-//                 Back
-//               </button>
-//               <button
-//                 onClick={handleSubmit}
-//                 className="bg-green-600 text-white py-3 px-6 rounded-lg hover:bg-green-700 transition duration-300"
-//               >
-//                 Create My Trip
-//               </button>
-//             </div>
-//           </div>
-//         );
-        
-//       case 5:
-//         return (
-//           <div className="p-6 bg-white rounded-lg shadow-md text-center">
-//             <div className="text-green-600 text-6xl mb-4">✓</div>
-//             <h2 className="text-2xl font-bold mb-4">Your trip is being created!</h2>
-//             <p className="mb-6">Our AI is generating your personalized itinerary. This will take just a moment.</p>
-//             <div className="w-full h-4 bg-gray-200 rounded-full mb-6">
-//               <div className="h-4 bg-indigo-600 rounded-full animate-pulse w-3/4"></div>
-//             </div>
-//             <p className="text-gray-500">We're finding the best options based on your preferences.</p>
-//           </div>
-//         );
-        
-//       default:
-//         return null;
-//     }
-//   };
-
-//   return (
-//     <>
-//       <Head>
-//         <title>Plan Your Trip | Hopwell</title>
-//       </Head>
-      
-//       <div className="min-h-screen bg-yellow-50 py-12">
-//         <div className="max-w-4xl mx-auto px-4">
-//           <div className="text-center mb-8">
-//             <h1 className="text-3xl font-bold text-indigo-900">Plan Your Perfect Trip</h1>
-//             <p className="mt-2 text-gray-600">Tell us about your preferences, and we'll create a personalized itinerary</p>
-//           </div>
-          
-//           {renderStep()}
-//         </div>
-//       </div>
-//     </>
-//   );
-// }
-
-// TripPlanner.getLayout = function getLayout(page) {
-//   return <AuthLayout>{page}</AuthLayout>;
-// };

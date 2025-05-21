@@ -1,111 +1,126 @@
 // components/AuthContext.js
-import { createContext, useContext, useEffect, useState } from 'react'
-import { useRouter } from 'next/router'
-import { supabase } from '@/libs/supabase'
+import { createContext, useState, useEffect, useContext } from 'react';
+import { useRouter } from 'next/router';
+import { supabase } from '@/libs/supabase';
 
-const AuthContext = createContext({})
+const AuthContext = createContext();
 
 export function AuthProvider({ children }) {
-  const [user, setUser] = useState(null)
-  const [session, setSession] = useState(null)
-  const [loading, setLoading] = useState(true)
-  const router = useRouter()
+  const [user, setUser] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const router = useRouter();
 
   useEffect(() => {
-    // Check for the auth confirmation in URL
-    const handleAuthRedirect = async () => {
-      const { hash } = window.location
-      if (hash && hash.includes('access_token')) {
-        // Supabase can handle the hash as part of its auth flow
-        const { data, error } = await supabase.auth.getUser()
-        if (data?.user) {
-          // Successfully confirmed email, now redirect to trip planner instead of dashboard
-          router.push('/trip-planner')
-        }
-      }
-    }
+    // Check for active session on mount
+    const checkSession = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      setUser(session?.user || null);
+      setLoading(false);
+    };
 
-    handleAuthRedirect()
-
-    // Get initial session
-    const getInitialSession = async () => {
-      try {
-        const { data, error } = await supabase.auth.getSession()
-        setSession(data.session)
-        setUser(data.session?.user || null)
-      } catch (error) {
-        console.error('Error getting session:', error)
-      } finally {
-        setLoading(false)
-      }
-    }
-
-    getInitialSession()
+    checkSession();
 
     // Listen for auth changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      (event, session) => {
-        console.log('Auth event:', event)
-        setSession(session)
-        setUser(session?.user || null)
-        setLoading(false)
-
-        // Handle specific auth events
-        if (event === 'SIGNED_IN' && session) {
-          // Redirect to trip-planner after sign in instead of dashboard
-          router.push('/trip-planner')
-        } else if (event === 'SIGNED_OUT') {
-          // Redirect to home after sign out
-          router.push('/')
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setUser(session?.user || null);
+      setLoading(false);
+      
+      if (session?.user) {
+        // If user signed in and on a auth page, redirect to trip-planner
+        // instead of dashboard
+        if (
+          router.pathname === '/auth/signin' || 
+          router.pathname === '/auth/signup' ||
+          router.pathname === '/dashboard' // Redirect from dashboard too
+        ) {
+          router.push('/trip-planner');
         }
       }
-    )
+    });
 
     return () => {
-      subscription?.unsubscribe()
-    }
-  }, [router])
+      subscription?.unsubscribe();
+    };
+  }, [router]);
 
-  // Expose auth methods and state
-  const value = {
-    user,
-    session,
-    signIn: async (email, password) => {
+  const signIn = async (email, password) => {
+    try {
       const { data, error } = await supabase.auth.signInWithPassword({
         email,
-        password
-      })
-      return { data, error }
-    },
-    signUp: async (email, password, metadata = {}) => {
+        password,
+      });
+
+      if (error) throw error;
+      
+      // Redirect to trip-planner instead of dashboard
+      router.push('/trip-planner');
+      return data;
+    } catch (error) {
+      throw error;
+    }
+  };
+
+  const signUp = async (email, password, name) => {
+    try {
       const { data, error } = await supabase.auth.signUp({
         email,
         password,
         options: {
-          data: metadata,
-          emailRedirectTo: `${window.location.origin}/auth/callback`
-        }
-      })
-      return { data, error }
-    },
-    signOut: async () => {
-      const { error } = await supabase.auth.signOut()
-      return { error }
-    },
-    loading,
-    // For compatibility with useSession
-    status: loading ? "loading" : user ? "authenticated" : "unauthenticated",
-    data: user ? { user, session } : null
-  }
+          data: {
+            full_name: name,
+          },
+        },
+      });
+
+      if (error) throw error;
+      
+      // Create user profile after successful signup
+      if (data.user) {
+        // Get the current date for credit reset tracking
+        const now = new Date();
+        
+        const { error: profileError } = await supabase
+          .from('profiles')
+          .insert([
+            { 
+              id: data.user.id, 
+              full_name: name,
+              email: email,
+              trips_count: 0,           // Initialize with 0 instead of null
+              countries_visited: 0,     // Initialize with 0 instead of null
+              credits: 30,              // Give 30 free credits initially
+              last_credit_reset: now.toISOString() // Track when credits were last reset
+            }
+          ]);
+
+        if (profileError) console.error('Error creating profile:', profileError);
+      }
+      
+      // Redirect to trip-planner instead of dashboard
+      router.push('/trip-planner');
+      return data;
+    } catch (error) {
+      throw error;
+    }
+  };
+
+  const signOut = async () => {
+    try {
+      const { error } = await supabase.auth.signOut();
+      if (error) throw error;
+      router.push('/');
+    } catch (error) {
+      console.error('Error signing out:', error.message);
+    }
+  };
 
   return (
-    <AuthContext.Provider value={value}>
+    <AuthContext.Provider value={{ user, signIn, signUp, signOut, loading }}>
       {children}
     </AuthContext.Provider>
-  )
+  );
 }
 
-export const useAuth = () => useContext(AuthContext)
-
-// For backward compatibility with components using useSession
-export const useSession = useAuth
+export function useAuth() {
+  return useContext(AuthContext);
+}
