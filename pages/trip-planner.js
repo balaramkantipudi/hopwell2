@@ -7,7 +7,7 @@ import Footer from "@/components/Footer";
 import DatePicker from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
 import { useAuth } from "@/components/AuthContext";
-import { checkUserCredits } from '../libs/creditSystem';
+import { checkUserCredits } from '../libs/CreditSystem';
 import { supabase } from "@/libs/supabase";
 
 const interests = [
