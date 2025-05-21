@@ -1,6 +1,7 @@
 // pages/api/generate-itinerary.js
 import { supabase } from '@/libs/supabase';
-import { checkUserCredits, deductCredits } from '../../libs/creditSystem';
+//import { checkUserCredits, deductCredits } from '../../libs/creditSystem';
+const { checkUserCredits, deductCredits } = require('../../libs/creditSystem');
 
 export default async function handler(req, res) {
   // Only accept POST requests
