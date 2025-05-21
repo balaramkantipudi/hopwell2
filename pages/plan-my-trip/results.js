@@ -6,7 +6,7 @@ import Footer from "@/components/Footer";
 import { supabase } from "@/libs/supabase";
 import TripHeader from "@/components/TripHeader";
 import { useAuth } from "@/components/AuthContext";
-import { processItinerary } from "@/libs/affiliateLinks"; // Import the utility function
+import { processItinerary } from "@/libs/affiliatelinks"; // Import the utility function
 
 export default function ResultsPage() {
   const [itineraryData, setItineraryData] = useState("");
