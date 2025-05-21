@@ -1,0 +1,6 @@
+"use strict";(()=>{var e={};e.id=1385,e.ids=[1385],e.modules={8769:e=>{e.exports=require("daisyui/src/theming/themes.js")},8941:e=>{e.exports=require("form-data")},8557:e=>{e.exports=require("mailgun.js")},145:e=>{e.exports=require("next/dist/compiled/next-server/pages-api.runtime.prod.js")},9705:(e,r,t)=>{t.r(r),t.d(r,{config:()=>p,default:()=>d,routeModule:()=>l});var a={};t.r(a),t.d(a,{default:()=>handler});var i=t(1802),s=t(7153),n=t(6249),o=t(2110),u=t(5225);async function handler(e,r){let{method:t}=e;if("POST"===t){let t=e.body;try{let{"stripped-text":e,subject:a,sender:i}=t;return u.Z.mailgun.forwardRepliesTo&&e&&a&&i&&await (0,o.C)(u.Z.mailgun.forwardRepliesTo,`${u.Z?.appName} | ${a}`,`Subject: ${a}
+
+From: ${i}
+
+Content:
+${e}`,`<div><p>Subject: ${a}</p><p>From: ${i}</p><p>Content:</p><p>${e}</p></div>`,i),r.status(200).send()}catch(e){return console.error(e?.message),r.status(500).send()}}return r.status(200).send()}let d=(0,n.l)(a,"default"),p=(0,n.l)(a,"config"),l=new i.PagesAPIRouteModule({definition:{kind:s.x.PAGES_API,page:"/api/webhook/mailgun",pathname:"/api/webhook/mailgun",bundlePath:"",filename:""},userland:a})}};var r=require("../../../webpack-api-runtime.js");r.C(e);var __webpack_exec__=e=>r(r.s=e),t=r.X(0,[4222,2110],()=>__webpack_exec__(9705));module.exports=t})();

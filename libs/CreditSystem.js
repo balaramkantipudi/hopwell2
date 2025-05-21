@@ -1,4 +1,5 @@
 // libs/creditSystem.js
+
 import { supabase } from './supabase';
 
 // Function to check if a user has enough credits
