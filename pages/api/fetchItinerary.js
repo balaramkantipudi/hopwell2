@@ -1,3 +1,4 @@
+/*
 // pages/api/fetchItinerary.js
 import { fetchAI21Response } from "@/libs/ai21";
 
@@ -16,3 +17,4 @@ export default async function handler(req, res) {
     res.status(405).end(`Method ${req.method} Not Allowed`);
   }
 }
+*/

@@ -374,6 +374,7 @@
 
 
 
+/*
 // pages/api/direct-itinerary.js
 import { supabase } from '@/libs/supabase';
 
@@ -466,3 +467,4 @@ DAY 3: DEPARTURE
 Enjoy your trip to ${destination}!
 `;
 }
+*/

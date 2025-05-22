@@ -18,6 +18,16 @@ export default function ResultsPage() {
   const router = useRouter();
   const { user } = useAuth();
 
+// Add this function definition within pages/plan-my-trip/results.js
+function processItinerary(itineraryText, formData) {
+  // For now, assume it just returns the text.
+  // If formData is used to modify or extract parts of itineraryText, 
+  // that logic would go here.
+  // Example: const title = formData.destination; 
+  console.log("Processing itinerary text in results.js:", itineraryText);
+  return itineraryText; 
+}
+
   // Add to useEffect in plan-my-trip/results.js
 useEffect(() => {
   const fetchItinerary = async () => {
@@ -180,6 +190,7 @@ const saveTrip = async () => {
   try {
     // Get form data from localStorage if it exists
     let formData = {};
+    console.log("Saving trip with data:", { tripData, itinerary: itineraryData, title: tripTitle });
     try {
       const storedFormData = localStorage.getItem("tripFormData");
       if (storedFormData) {

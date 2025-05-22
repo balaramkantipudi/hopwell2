@@ -1,3 +1,4 @@
+/*
 export async function fetchAI21Response(data) {
   console.log("Data:", data);
   const prompt = `Act as a trip planner, scheduler, and a finance manager, and provide a detailed trip itinerary in a human readable form with approximate cost per item based on the following information: ${JSON.stringify(
@@ -60,3 +61,4 @@ export async function fetchAI21Response(data) {
   console.log("Response Data:", responseData);
   return responseData.completions[0].data.text;
 }
+*/

@@ -1,3 +1,4 @@
+/*
 // pages/api/generateItinerary.js
 import { GoogleGenerativeAI } from '@google/generative-ai';
 
@@ -404,3 +405,4 @@ Enjoy your trip to ${destination}!
 
   return itinerary;
 }
+*/

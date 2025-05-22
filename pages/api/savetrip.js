@@ -18,7 +18,11 @@ export default async function handler(req, res) {
     const { tripData, itinerary, title } = req.body;
     
     if (!tripData || !itinerary) {
-      return res.status(400).json({ error: 'Missing required data' });
+      return res.status(400).json({ error: 'Missing required data: tripData and itinerary are required.' });
+    }
+
+    if (!tripData.destination) {
+      return res.status(400).json({ error: 'Missing required field: tripData.destination' });
     }
 
     // Insert into trips table with simplified structure

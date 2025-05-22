@@ -1,3 +1,4 @@
+/*
 // pages/api/Trips/generate-itinerary.js
 import { supabase } from '@/libs/supabase'
 import { GoogleGenerativeAI } from '@google/generative-ai'
@@ -243,3 +244,4 @@ const generateAffiliateLinks = (data) => {
     return res.status(500).json({ error: 'Server error' });
   }
 }
+*/

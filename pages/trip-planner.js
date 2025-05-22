@@ -8,7 +8,10 @@ import AuthLayout from '@/components/AuthLayout';
 export default function TripPlanner() {
   const router = useRouter();
   const [step, setStep] = useState(1);
-  const [isGenerating, setIsGenerating] = useState(false);
+  // Adjusted for multi-step loading/error
+  const [isLoading, setIsLoading] = useState(false); 
+  const [loadingMessage, setLoadingMessage] = useState('');
+  const [errorMessage, setErrorMessage] = useState(''); 
   const [formData, setFormData] = useState({
     destination: '',
     origin: '',
@@ -210,76 +213,145 @@ export default function TripPlanner() {
 const handleSubmit = async (e) => {
   e.preventDefault();
   if (!validateStep(step)) return;
+
+  setStep(3); // Show loading/progress UI
+  setIsLoading(true);
+  setErrorMessage('');
   
-  setStep(3); // Show loading state
-  setIsGenerating(true);
-  
-  // Save form data to localStorage first
-  saveFormDataToStorage();
-  
+  // --- Step 1: Create Draft Trip ---
+  setLoadingMessage('Saving your trip details...');
+  const tripTitle = formData.destination ? `Trip to ${formData.destination}` : 'My New Trip';
+  let tripId;
+
   try {
-    // Format dates for API
-    const dataToSend = {
+    // Prepare data for /api/savetrip
+    // Ensure dates are ISO strings if they exist, otherwise null
+    const dataToStoreForSaveTrip = {
       ...formData,
       startDate: formData.startDate ? formData.startDate.toISOString() : null,
       endDate: formData.endDate ? formData.endDate.toISOString() : null,
-      // Add default values for any required parameters
-      budget: formData.budget || '1000',
-      priority: formData.priority || 'experience'
     };
-    
-    console.log("Sending data to API:", dataToSend);
-    
-    // Send data to our API endpoint
-    const res = await fetch('/api/direct-itinerary', {
+
+    const saveTripResponse = await fetch('/api/savetrip', {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(dataToSend),
-      // Include credentials to send cookies (important for auth)
-      credentials: 'include'
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        tripData: dataToStoreForSaveTrip,
+        itinerary: "DRAFT - Itinerary not yet generated", // Placeholder
+        title: tripTitle,
+      }),
+      credentials: 'include', // If your API needs authentication cookies
     });
-    
-    // Get response text first to debug any issues
-    const responseText = await res.text();
-    console.log("Raw API response:", responseText);
-    
-    // Try to parse as JSON
-    let data;
-    try {
-      data = JSON.parse(responseText);
-    } catch (parseError) {
-      console.error('Failed to parse response as JSON:', responseText);
-      throw new Error(`Invalid JSON response: ${responseText.substring(0, 100)}...`);
+
+    const saveTripResult = await saveTripResponse.json();
+
+    if (!saveTripResponse.ok) {
+      throw new Error(saveTripResult.error || 'Failed to save draft trip.');
     }
     
-    // Handle API errors
-    if (!res.ok) {
-      console.error('API error response:', data);
-      throw new Error(data.error || data.message || 'Failed to generate itinerary');
+    tripId = saveTripResult.tripId;
+    if (!tripId) {
+        throw new Error('Trip ID not received after saving draft trip.');
     }
-    
-    if (!data.text) {
-      throw new Error('No itinerary text received from API');
+    console.log('Draft trip saved successfully, Trip ID:', tripId);
+
+    // --- Step 2: Generate Itinerary ---
+    setLoadingMessage('Generating your personalized itinerary (this may take a moment)...');
+    const generateResponse = await fetch('/api/itinerary/generate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ tripId }),
+      credentials: 'include', // If your API needs authentication cookies
+    });
+
+    const generateResult = await generateResponse.json();
+
+    if (!generateResponse.ok) {
+      // Handle specific credit error
+      if (generateResult.error && generateResult.error.toLowerCase().includes('credits')) {
+          throw new Error(generateResult.error + " Please visit our pricing page to add more credits.");
+      }
+      throw new Error(generateResult.error || 'Failed to generate itinerary.');
     }
+
+    // --- Step 3: Store Data and Redirect ---
+    let itineraryTextForLocalStorage = "";
+    if (generateResult.trip && generateResult.trip.destination) { // Ensure trip object and destination exist
+        itineraryTextForLocalStorage = `TRIP TO ${generateResult.trip.destination.toUpperCase()}\n\n`;
+        itineraryTextForLocalStorage += "ITINERARY DETAILS:\n";
+        if (generateResult.trip.itinerary && Array.isArray(generateResult.trip.itinerary)) {
+            generateResult.trip.itinerary.forEach(day => {
+                // Ensure day.date is valid before trying to format. If it's already YYYY-MM-DD, no need to reformat.
+                // If it's a Date object or ISO string, format it.
+                let displayDate = day.date;
+                if (displayDate && typeof displayDate !== 'string' || (typeof displayDate === 'string' && displayDate.includes('T'))) {
+                    try {
+                        displayDate = new Date(day.date).toISOString().split('T')[0];
+                    } catch (e) {
+                        console.warn("Could not parse day.date:", day.date, e);
+                        displayDate = day.date; // keep original if parsing fails
+                    }
+                }
+                itineraryTextForLocalStorage += `Day ${displayDate || 'N/A'}:\n`;
+                if (day.activities && Array.isArray(day.activities)) {
+                    day.activities.forEach(activity => {
+                        itineraryTextForLocalStorage += `  - ${activity.time || 'N/A'}: ${activity.title || 'N/A'} (${activity.description || 'No description'})\n`;
+                    });
+                }
+            });
+        } else if (typeof generateResult.trip.itinerary === 'object' && generateResult.trip.itinerary !== null) { 
+             itineraryTextForLocalStorage += JSON.stringify(generateResult.trip.itinerary, null, 2) + "\n";
+        } else {
+             itineraryTextForLocalStorage += (generateResult.trip.itinerary || "Not available") + "\n";
+        }
+        itineraryTextForLocalStorage += "\n";
+
+        if (generateResult.trip.accommodations && Array.isArray(generateResult.trip.accommodations) && generateResult.trip.accommodations.length > 0) {
+            itineraryTextForLocalStorage += "ACCOMMODATIONS:\n";
+            generateResult.trip.accommodations.forEach(acc => {
+                itineraryTextForLocalStorage += `  - ${acc.name || 'N/A'} (Price: ${acc.pricePerNight || 'N/A'} per night)\n`;
+            });
+            itineraryTextForLocalStorage += "\n";
+        }
+
+        if (generateResult.trip.transportation && Array.isArray(generateResult.trip.transportation) && generateResult.trip.transportation.length > 0) {
+            itineraryTextForLocalStorage += "TRANSPORTATION:\n";
+            generateResult.trip.transportation.forEach(trans => {
+                const fromName = trans.from && trans.from.name ? trans.from.name : 'N/A';
+                const toName = trans.to && trans.to.name ? trans.to.name : 'N/A';
+                itineraryTextForLocalStorage += `  - ${trans.type || 'N/A'} from ${fromName} to ${toName} (Price: ${trans.price || 'N/A'})\n`;
+            });
+            itineraryTextForLocalStorage += "\n";
+        }
+
+        if (generateResult.trip.total_cost) { // Changed from totalCost to total_cost to match API response
+            itineraryTextForLocalStorage += "TOTAL ESTIMATED COST:\n$" + generateResult.trip.total_cost + "\n";
+        }
+    } else {
+        itineraryTextForLocalStorage = "Itinerary data could not be fully retrieved or destination is missing.";
+        if (generateResult.trip && generateResult.trip.itinerary_text) { // Fallback to itinerary_text if main construction fails
+            itineraryTextForLocalStorage = generateResult.trip.itinerary_text;
+        }
+    }
+    localStorage.setItem('itineraryAndBudget', itineraryTextForLocalStorage);
+    console.log("Saved to localStorage - itineraryAndBudget (formatted):", itineraryTextForLocalStorage);
     
-    // Store the generated itinerary in localStorage
-    localStorage.setItem('itineraryAndBudget', data.text);
-    
-    // Add a small delay to show the loading state
+    // Save original form data (or potentially the data from generateResult.trip if it's more complete)
+    saveFormDataToStorage(); // This already saves formData with ISO dates
+    console.log("Saved to localStorage - tripFormData:", localStorage.getItem("tripFormData"));
+
+    setLoadingMessage('Almost there! Redirecting to your results...');
     setTimeout(() => {
-      // Navigate to results page
       router.push('/plan-my-trip/results');
     }, 1500);
-    
+
   } catch (error) {
-    console.error('Itinerary generation error:', error);
-    setStep(2); // Go back to the previous step
-    setIsGenerating(false);
-    
-    // Show error message
-    alert(`Failed to generate itinerary: ${error.message}. Please try again.`);
+    console.error('Error during trip creation/generation:', error);
+    setErrorMessage(error.message || 'An unexpected error occurred.');
+    setStep(2); // Go back to the form to allow retry/correction
+  } finally {
+    setIsLoading(false);
+    setLoadingMessage('');
   }
 };
   const renderStep = () => {
@@ -543,16 +615,40 @@ const handleSubmit = async (e) => {
           </div>
         );
         
-      case 3: // Now just the loading screen
+      case 3: // Loading/Progress screen
         return (
           <div className="p-6 bg-white rounded-lg shadow-md text-center">
-            <div className="text-green-600 text-6xl mb-4">✓</div>
-            <h2 className="text-2xl font-bold mb-4">Your trip is being created!</h2>
-            <p className="mb-6">Our AI is generating your personalized itinerary. This may take up to a minute.</p>
-            <div className="w-full h-4 bg-gray-200 rounded-full mb-6">
-              <div className="h-4 bg-indigo-600 rounded-full animate-pulse w-3/4"></div>
-            </div>
-            <p className="text-gray-500">We're finding the best options based on your preferences.</p>
+            {isLoading && (
+              <>
+                <div className="text-indigo-600 text-6xl mb-4">
+                  {/* Simple spinner */}
+                  <svg className="animate-spin h-12 w-12 mx-auto" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                  </svg>
+                </div>
+                <h2 className="text-2xl font-bold mb-4 text-indigo-900">
+                  {loadingMessage || 'Processing your request...'}
+                </h2>
+                <p className="mb-6 text-gray-600">Please wait, this may take a moment.</p>
+                <div className="w-full h-2 bg-gray-200 rounded-full mb-6 overflow-hidden">
+                  <div className="h-2 bg-indigo-600 animate-pulse" style={{ width: '100%' }}></div>
+                </div>
+              </>
+            )}
+            {errorMessage && !isLoading && (
+              <>
+                <div className="text-red-500 text-6xl mb-4">✗</div>
+                <h2 className="text-2xl font-bold mb-4 text-red-700">Oops! Something went wrong.</h2>
+                <p className="mb-6 text-gray-700">{errorMessage}</p>
+                <button
+                  onClick={() => { setStep(2); setErrorMessage(''); }}
+                  className="bg-indigo-600 text-white py-2 px-4 rounded-lg hover:bg-indigo-700 transition duration-300"
+                >
+                  Try Again
+                </button>
+              </>
+            )}
           </div>
         );
         
