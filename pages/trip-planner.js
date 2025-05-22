@@ -2,13 +2,13 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/router";
 import Head from "next/head";
-import TripHeader from "@/components/TripHeader"; // Import the TripHeader
+import TripHeader from "@/components/TripHeader";
 import Footer from "@/components/Footer";
 import DatePicker from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
 import { useAuth } from "@/components/AuthContext";
-import { checkUserCredits } from '../libs/CreditSystem';
 import { supabase } from "@/libs/supabase";
+import Link from "next/link";
 
 const interests = [
   "Beaches & Relaxation",
@@ -26,7 +26,7 @@ const interests = [
 export default function TripPlanner() {
   const { user } = useAuth();
   const router = useRouter();
-  const [userCredits, setUserCredits] = useState(0);
+  const [userCredits, setUserCredits] = useState(null);
   const [nextResetDate, setNextResetDate] = useState('');
   const [creditCheckDone, setCreditCheckDone] = useState(false);
   
@@ -44,6 +44,14 @@ export default function TripPlanner() {
   const [isLoading, setIsLoading] = useState(false);
   const [responseError, setResponseError] = useState("");
 
+  // Redirect if not authenticated
+  useEffect(() => {
+    if (!user) {
+      router.push('/auth/signin?redirect=trip-planner');
+      return;
+    }
+  }, [user, router]);
+
   // Fetch user credits when component mounts
   useEffect(() => {
     if (user) {
@@ -53,21 +61,51 @@ export default function TripPlanner() {
 
   const fetchUserCredits = async () => {
     try {
-      const creditCheck = await checkUserCredits(user.id, 0);
-      setUserCredits(creditCheck.currentCredits);
-      
-      // Fetch the last reset date to calculate next reset
+      // Fetch credits from the database
       const { data, error } = await supabase
         .from('user_credits')
-        .select('last_credit_reset')
+        .select('*')
         .eq('user_id', user.id)
         .single();
         
-      if (error) throw error;
+      if (error) {
+        // If no record exists, initialize one
+        if (error.code === 'PGRST116') {
+          await initializeUserCredits();
+          return;
+        }
+        throw error;
+      }
+      
+      // Check if credits need to be reset (monthly)
+      const lastReset = data.last_credit_reset ? new Date(data.last_credit_reset) : null;
+      const now = new Date();
+      
+      if (!lastReset || 
+          lastReset.getMonth() !== now.getMonth() || 
+          lastReset.getFullYear() !== now.getFullYear()) {
+        
+        // Reset credits for new month
+        const { error: resetError } = await supabase
+          .from('user_credits')
+          .update({
+            credits_remaining: 30,
+            last_credit_reset: now.toISOString()
+          })
+          .eq('user_id', user.id);
+          
+        if (resetError) {
+          console.error('Error resetting credits:', resetError);
+        }
+        
+        setUserCredits(30);
+      } else {
+        setUserCredits(data.credits_remaining || 0);
+      }
       
       // Calculate next reset date
-      const lastReset = data?.last_credit_reset ? new Date(data.last_credit_reset) : new Date();
-      const nextReset = new Date(lastReset);
+      const resetDate = lastReset || now;
+      const nextReset = new Date(resetDate);
       nextReset.setMonth(nextReset.getMonth() + 1);
       nextReset.setDate(1);
       setNextResetDate(nextReset.toLocaleDateString());
@@ -75,6 +113,40 @@ export default function TripPlanner() {
       setCreditCheckDone(true);
     } catch (error) {
       console.error('Error fetching user credits:', error);
+      setUserCredits(0);
+      setCreditCheckDone(true);
+    }
+  };
+
+  const initializeUserCredits = async () => {
+    try {
+      const response = await fetch('/api/credits/initialize', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        }
+      });
+      
+      if (!response.ok) {
+        throw new Error('Failed to initialize credits');
+      }
+      
+      const result = await response.json();
+      
+      if (result.success) {
+        setUserCredits(result.credits.credits_remaining);
+        
+        // Calculate next reset date
+        const resetDate = new Date(result.credits.reset_date);
+        const nextReset = new Date(resetDate);
+        nextReset.setMonth(nextReset.getMonth() + 1);
+        nextReset.setDate(1);
+        setNextResetDate(nextReset.toLocaleDateString());
+      }
+      
+      setCreditCheckDone(true);
+    } catch (error) {
+      console.error('Error initializing credits:', error);
       setUserCredits(0);
       setCreditCheckDone(true);
     }
@@ -124,68 +196,99 @@ export default function TripPlanner() {
     });
   };
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
+  // Updated handleSubmit function for trip-planner.js
+// Replace the existing handleSubmit function with this one
+
+const handleSubmit = async (e) => {
+  e.preventDefault();
+  
+  // Check if user has enough credits
+  if (userCredits < 1) {
+    setResponseError("You don't have enough credits to generate an itinerary. You'll get 30 new credits next month.");
+    return;
+  }
+  
+  if (!validateForm()) {
+    return;
+  }
+  
+  setIsLoading(true);
+  setResponseError("");
+  
+  try {
+    // Save form data to localStorage
+    localStorage.setItem("tripFormData", JSON.stringify(formData));
     
-    if (!user) {
-      // Redirect to sign in if not logged in
-      router.push("/auth/signin?redirect=trip-planner");
-      return;
+    // Get the current session for authentication
+    const { data: { session } } = await supabase.auth.getSession();
+    
+    if (!session?.access_token) {
+      throw new Error('Authentication required. Please sign in again.');
     }
     
-    // Check if user has enough credits
-    if (userCredits < 1) {
-      setResponseError("You don't have enough credits to generate an itinerary.");
-      return;
-    }
+    // Call the generate-itinerary API with proper authentication
+    const response = await fetch("/api/generate-itinerary", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${session.access_token}`,
+        "x-user-id": session.user.id
+      },
+      body: JSON.stringify(formData)
+    });
     
-    if (!validateForm()) {
-      return;
-    }
+    const data = await response.json();
     
-    setIsLoading(true);
-    setResponseError("");
-    
-    try {
-      // Save form data to localStorage
-      localStorage.setItem("tripFormData", JSON.stringify(formData));
-      
-      // Call the generate-itinerary API
-      const response = await fetch("/api/generate-itinerary", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify(formData)
-      });
-      
-      const data = await response.json();
-      
-      if (!response.ok) {
-        throw new Error(data.error || "Failed to generate itinerary");
-      }
-      
-      // Update the local credit count
-      if (data.creditsRemaining !== undefined) {
-        setUserCredits(data.creditsRemaining);
+    if (!response.ok) {
+      // Handle specific error cases
+      if (response.status === 401) {
+        throw new Error('Authentication expired. Please sign in again.');
+      } else if (response.status === 403) {
+        throw new Error(data.error || 'Not enough credits to generate itinerary');
       } else {
-        // Fallback if server doesn't return the new balance
-        setUserCredits(prev => Math.max(0, prev - 1));
+        throw new Error(data.error || `Request failed: ${response.status}`);
       }
-      
-      // Store the generated itinerary in localStorage
-      localStorage.setItem("itineraryAndBudget", data.itinerary);
-      
-      // Redirect to the results page
-      router.push("/plan-my-trip/results");
-      
-    } catch (error) {
-      console.error("Error generating itinerary:", error);
-      setResponseError(error.message || "Failed to generate itinerary. Please try again.");
-    } finally {
-      setIsLoading(false);
     }
-  };
+    
+    // Update the local credit count
+    if (data.creditsRemaining !== undefined) {
+      setUserCredits(data.creditsRemaining);
+    } else {
+      // Fallback if server doesn't return the new balance
+      setUserCredits(prev => Math.max(0, prev - 1));
+    }
+    
+    // Store the generated itinerary in localStorage
+    localStorage.setItem("itineraryAndBudget", data.itinerary);
+    
+    // Redirect to the results page
+    router.push("/plan-my-trip/results");
+    
+  } catch (error) {
+    console.error("Error generating itinerary:", error);
+    
+    // Handle authentication errors specifically
+    if (error.message.includes('Authentication') || error.message.includes('sign in')) {
+      setResponseError("Authentication required. Please sign in again.");
+      setTimeout(() => {
+        router.push('/auth/signin?redirect=trip-planner');
+      }, 2000);
+    } else {
+      setResponseError(error.message || "Failed to generate itinerary. Please try again.");
+    }
+  } finally {
+    setIsLoading(false);
+  }
+};
+
+  // Show loading if not authenticated yet
+  if (!user) {
+    return (
+      <div className="min-h-screen bg-yellow-50 flex items-center justify-center">
+        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-indigo-900"></div>
+      </div>
+    );
+  }
 
   return (
     <>
@@ -193,7 +296,6 @@ export default function TripPlanner() {
         <title>Plan Your Trip | Hopwell</title>
       </Head>
 
-      {/* Use the TripHeader component */}
       <TripHeader />
       
       <div className="bg-gray-50 min-h-screen py-8">
@@ -204,21 +306,43 @@ export default function TripPlanner() {
               <p className="mt-2 text-gray-600">Tell us about your travel preferences and we'll create a personalized itinerary</p>
             </div>
             
-            {/* Monthly Credit Information */}
+            {/* Credit Information */}
             {creditCheckDone && (
-              <div className="mb-6 text-center">
-                <div className="inline-flex items-center px-4 py-2 rounded-full bg-indigo-50 text-indigo-700">
-                  <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                  </svg>
-                  You get <span className="font-bold mx-1">30</span> free credits each month. Next reset: {nextResetDate}
+              <div className="mb-6 bg-white rounded-lg p-4 shadow-sm">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center">
+                    <div className={`w-4 h-4 rounded-full mr-3 ${
+                      userCredits > 5 ? 'bg-green-500' : 
+                      userCredits > 0 ? 'bg-yellow-500' : 
+                      'bg-red-500'
+                    }`}></div>
+                    <span className="text-gray-700">
+                      You have <span className="font-bold text-indigo-600">{userCredits}</span> credits remaining
+                    </span>
+                  </div>
+                  <div className="text-sm text-gray-500">
+                    Resets: {nextResetDate}
+                  </div>
                 </div>
+                {userCredits < 5 && (
+                  <div className="mt-2 text-sm text-amber-600">
+                    {userCredits === 0 ? 
+                      "You're out of credits! You'll get 30 new credits on your next reset date." :
+                      "Running low on credits! Each itinerary uses 1 credit."
+                    }
+                  </div>
+                )}
               </div>
             )}
             
             {responseError && (
-              <div className="mb-6 p-4 bg-red-50 text-red-700 rounded-lg">
-                {responseError}
+              <div className="mb-6 p-4 bg-red-50 text-red-700 rounded-lg border border-red-200">
+                <div className="flex">
+                  <svg className="w-5 h-5 mr-2 flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+                  </svg>
+                  <span>{responseError}</span>
+                </div>
               </div>
             )}
             
@@ -367,32 +491,42 @@ export default function TripPlanner() {
               </div>
               
               <div className="bg-gray-50 p-6 flex justify-between items-center">
-                <div className="text-sm text-gray-500">
+                <div className="text-sm text-gray-600">
                   {userCredits > 0 ? (
                     <span>This will use 1 credit from your monthly allowance</span>
                   ) : (
-                    <span className="text-red-500">You need at least 1 credit to generate an itinerary</span>
+                    <span className="text-red-600 font-medium">You need at least 1 credit to generate an itinerary</span>
                   )}
                 </div>
-                <button
-                  type="submit"
-                  disabled={isLoading || userCredits < 1}
-                  className={`px-6 py-3 rounded-lg font-medium flex items-center ${
-                    isLoading || userCredits < 1 ? 'bg-gray-400 cursor-not-allowed' : 'bg-indigo-600 hover:bg-indigo-700 text-white'
-                  }`}
-                >
-                  {isLoading ? (
-                    <>
-                      <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                      </svg>
-                      Generating...
-                    </>
-                  ) : (
-                    'Create My Itinerary'
+                <div className="flex space-x-3">
+                  {userCredits < 1 && (
+                    <Link 
+                      href="/pricing"
+                      className="px-4 py-2 text-indigo-600 border border-indigo-600 rounded-lg hover:bg-indigo-50 transition"
+                    >
+                      Get Credits
+                    </Link>
                   )}
-                </button>
+                  <button
+                    type="submit"
+                    disabled={isLoading || userCredits < 1}
+                    className={`px-6 py-3 rounded-lg font-medium flex items-center ${
+                      isLoading || userCredits < 1 ? 'bg-gray-400 cursor-not-allowed text-white' : 'bg-indigo-600 hover:bg-indigo-700 text-white'
+                    }`}
+                  >
+                    {isLoading ? (
+                      <>
+                        <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                        </svg>
+                        Generating...
+                      </>
+                    ) : (
+                      'Create My Itinerary'
+                    )}
+                  </button>
+                </div>
               </div>
             </form>
           </div>
