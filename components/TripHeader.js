@@ -23,7 +23,7 @@ const TripHeader = () => {
     try {
       const { data, error } = await supabase
         .from('user_credits')
-        .select('credits')
+        .select('credits_remaining')
         .eq('user_id', user.id)
         .single();
         
@@ -32,7 +32,7 @@ const TripHeader = () => {
         return;
       }
       
-      setUserCredits(data?.credits || 0);
+      setUserCredits(data?.credits_remaining || 0);
     } catch (error) {
       console.error('Error fetching user credits:', error);
     }

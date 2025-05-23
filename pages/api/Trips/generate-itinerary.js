@@ -1,6 +1,7 @@
 // pages/api/Trips/generate-itinerary.js
 import { supabase } from '@/libs/supabase'
 import { GoogleGenerativeAI } from '@google/generative-ai'
+import { injectAffiliateLinksToItineraryJSON } from '@/libs/affiliatelinks';
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
@@ -9,9 +10,15 @@ export default async function handler(req, res) {
 
   try {
     // Get user from Supabase session
-    const { data: { session }, error: authError } = await supabase.auth.getSession();
-    
-    if (authError || !session) {
+    let session, authError;
+    try {
+      const sessionResult = await supabase.auth.getSession();
+      session = sessionResult.data.session;
+      authError = sessionResult.error;
+      if (authError) throw authError;
+      if (!session) throw new Error('Not authenticated');
+    } catch (error) {
+      console.error('Supabase auth error:', error);
       return res.status(401).json({ error: 'Not authenticated' });
     }
     
@@ -23,20 +30,31 @@ export default async function handler(req, res) {
     }
 
     // Find the trip in Supabase
-    const { data: trip, error: tripError } = await supabase
-      .from('trips')
-      .select('*')
-      .eq('id', tripId)
-      .eq('user_id', userId)
-      .single();
-
-    if (tripError || !trip) {
-      return res.status(404).json({ error: 'Trip not found' });
+    let trip;
+    try {
+      const { data: tripData, error: tripError } = await supabase
+        .from('trips')
+        .select('*')
+        .eq('id', tripId)
+        .eq('user_id', userId)
+        .single();
+      if (tripError) throw tripError;
+      if (!tripData) throw new Error('Trip not found');
+      trip = tripData;
+    } catch (error) {
+      console.error('Supabase error fetching trip:', error.message);
+      return res.status(500).json({ error: `Database error: ${error.message || 'Failed to fetch trip details.'}` });
     }
 
-    // Initialize Gemini (rest of your code remains the same)
-    const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-    const model = genAI.getGenerativeModel({ model: 'gemini-pro' });
+    // Initialize Gemini
+    let model;
+    try {
+      const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+      model = genAI.getGenerativeModel({ model: 'gemini-pro' });
+    } catch (error) {
+        console.error('Gemini API initialization error:', error.message, error.stack);
+        return res.status(500).json({ error: "AI provider setup failed." });
+    }
 
     // Format trip data for Gemini
     const tripInfo = {
@@ -137,109 +155,72 @@ export default async function handler(req, res) {
     `;
 
     // Generate content using Gemini
-    const result = await model.generateContent(prompt);
-    const response = await result.response;
-    const text = response.text();
-    
-// Add a function to generate affiliate links:
+    let text;
+    try {
+      const result = await model.generateContent(prompt);
+      const response = await result.response;
+      if (!response || typeof response.text !== 'function') {
+        // Log the entire response object if it's not as expected
+        console.error('Unexpected response structure from AI provider:', response);
+        throw new Error('Unexpected response structure from AI provider.');
+      }
+      text = response.text();
+    } catch (error) {
+      console.error('Gemini API request error:', error.message, error.stack);
+      // Check if the error has a more specific message or status code from the API
+      const errorMessage = error.response && error.response.data && error.response.data.error ? error.response.data.error.message : error.message;
+      return res.status(502).json({ error: `AI provider request failed. Please try again later. Details: ${errorMessage}` });
+    }
 
-const generateAffiliateLinks = (data) => {
-    // Hotels affiliate links
-    if (data.accommodations && data.accommodations.length > 0) {
-      data.accommodations = data.accommodations.map(hotel => {
-        // Generate Booking.com affiliate link
-        const bookingUrl = `https://www.booking.com/hotel/search.html?city=${encodeURIComponent(data.destination)}&aid=YOUR_BOOKING_AFFILIATE_ID`;
-        
-        // Generate Expedia affiliate link
-        const expediaUrl = `https://www.expedia.com/Hotel-Search?destination=${encodeURIComponent(data.destination)}&AFFCID=YOUR_EXPEDIA_AFFILIATE_ID`;
-        
-        return {
-          ...hotel,
-          bookingLinks: {
-            booking: bookingUrl,
-            expedia: expediaUrl
-          }
-        };
-      });
+    let itineraryJSON;
+    try {
+      // Clean the text response by removing ```json and ```
+      const cleanedText = text.replace(/^```json\s*|```\s*$/g, '');
+      itineraryJSON = JSON.parse(cleanedText);
+    } catch (parseError) {
+      console.error('Failed to parse itinerary data from AI provider. Raw output for parsing error:', text); // Log raw text on parsing error
+      return res.status(500).json({ error: 'Failed to parse itinerary data from AI provider. Raw output logged.' });
     }
     
-    // Flight affiliate links
-    if (data.transportation && data.transportation.length > 0) {
-      data.transportation = data.transportation.map(transport => {
-        if (transport.type === 'flight') {
-          // Generate Skyscanner affiliate link
-          const skyscannerUrl = `https://www.skyscanner.com/transport/flights/${transport.from.code}/${transport.to.code}/?partner=YOUR_SKYSCANNER_AFFILIATE_ID`;
-          
-          // Generate Kiwi affiliate link
-          const kiwiUrl = `https://www.kiwi.com/deep?from=${transport.from.code}&to=${transport.to.code}&affilid=YOUR_KIWI_AFFILIATE_ID`;
-          
-          return {
-            ...transport,
-            bookingLinks: {
-              skyscanner: skyscannerUrl,
-              kiwi: kiwiUrl
-            }
-          };
-        }
-        return transport;
-      });
-    }
-    
-    // Activity affiliate links
-    if (data.itinerary && data.itinerary.length > 0) {
-      data.itinerary = data.itinerary.map(day => {
-        if (day.activities && day.activities.length > 0) {
-          day.activities = day.activities.map(activity => {
-            // Generate GetYourGuide affiliate link
-            const getYourGuideUrl = `https://www.getyourguide.com/${data.destination}-l${activity.location.cityCode}/s/?partner_id=YOUR_GETYOURGUIDE_AFFILIATE_ID`;
-            
-            // Generate Viator affiliate link
-            const viatorUrl = `https://www.viator.com/tours/${data.destination}/search?pid=YOUR_VIATOR_AFFILIATE_ID`;
-            
-            return {
-              ...activity,
-              bookingLinks: {
-                getYourGuide: getYourGuideUrl,
-                viator: viatorUrl
-              }
-            };
-          });
-        }
-        return day;
-      });
-    }
-    
-    return data;
+  // Inject affiliate links
+  const tripDetailsForAffiliates = {
+    destination: trip.destination,
+    origin: trip.origin, // Pass origin
+    startDate: trip.startDate,
+    endDate: trip.endDate,
+    groupCount: trip.groupCount
   };
+  const enhancedItinerary = injectAffiliateLinksToItineraryJSON(itineraryJSON, tripDetailsForAffiliates);
   
-  // Then use this function before sending the response:
-  // After generating the itinerary with AI
-  const enhancedItinerary = generateAffiliateLinks(itineraryData);
-  
-  const { data: updatedTrip, error: updateError } = await supabase
-      .from('trips')
-      .update({
-        itinerary: itineraryData.itinerary,
-        accommodations: itineraryData.accommodations,
-        transportation: itineraryData.transportation,
-        total_cost: itineraryData.totalCost,
-        status: 'generated',
-        updated_at: new Date().toISOString()
-      })
-      .eq('id', tripId)
-      .select();
-    
-    if (updateError) {
-      return res.status(500).json({ error: 'Failed to update trip' });
-    }
+  let updatedTrip;
+  try {
+    const { data, error: updateError } = await supabase
+        .from('trips')
+        .update({
+          itinerary: enhancedItinerary.itinerary,
+          accommodations: enhancedItinerary.accommodations,
+          transportation: enhancedItinerary.transportation,
+          total_cost: enhancedItinerary.totalCost,
+          status: 'generated',
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', tripId)
+        .select(); // Ensure select() is called to get the updated record
+      if (updateError) throw updateError;
+      if (!data || data.length === 0) throw new Error('Failed to retrieve updated trip data.');
+      updatedTrip = data[0];
+  } catch (error) {
+    console.error('Supabase error updating trip:', error.message);
+    return res.status(500).json({ error: `Database error: ${error.message || 'Failed to update trip.'}` });
+  }
     
     return res.status(200).json({
       success: true,
       message: 'Itinerary generated successfully',
-      trip: updatedTrip[0]
+      trip: updatedTrip
     });
-  }catch (error) {
-    console.error('Generate itinerary error:', error);
-    return res.status(500).json({ error: 'Server error' });
+  } catch (error) {
+    console.error('Generate itinerary error - Unhandled:', error.message, error.stack);
+    return res.status(500).json({ error: 'An unexpected server error occurred.' });
   }
 }
