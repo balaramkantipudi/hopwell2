@@ -15,49 +15,77 @@ export const generateAffiliateLink = (type, destination, checkIn, checkOut, trav
   const hotelsComCode = process.env.NEXT_PUBLIC_HOTELS_AFFILIATE_CODE || 'UPtAKAG';
   const villiersCode = process.env.NEXT_PUBLIC_VILLIERS_AFFILIATE_CODE || '10093';
   const bookingComCode = process.env.NEXT_PUBLIC_BOOKING_AFFILIATE_CODE || '1942385';
-  const getYourGuideCode = process.env.NEXT_PUBLIC_GETYOURGUIDE_PARTNER_ID || 'YOUR_GETYOURGUIDE_AFFILIATE_ID';
-  const viatorCode = process.env.NEXT_PUBLIC_VIATOR_PID || 'YOUR_VIATOR_AFFILIATE_ID';
-  
-  // Format dates for URLs if provided
-  const formattedCheckIn = checkIn ? new Date(checkIn).toISOString().split('T')[0] : '';
-  const formattedCheckOut = checkOut ? new Date(checkOut).toISOString().split('T')[0] : '';
+  const getYourGuideCode = process.env.NEXT_PUBLIC_GETYOURGUIDE_PARTNER_ID || 'YOUR_GETYOURGUIDE_DEFAULT_ID'; // Fallback added
+  const viatorCode = process.env.NEXT_PUBLIC_VIATOR_PID || 'YOUR_VIATOR_DEFAULT_ID'; // Fallback added
+  const skyscannerPartnerId = process.env.NEXT_PUBLIC_SKYSCANNER_PARTNER_ID || 'YOUR_SKYSCANNER_DEFAULT_PARTNER_ID'; // Env var for Skyscanner
+  const kiwiAffiliateId = process.env.NEXT_PUBLIC_KIWI_AFFILIATE_ID || 'YOUR_KIWI_DEFAULT_AFFILIATE_ID'; // Env var for Kiwi
+
+  let formattedCheckIn = '';
+  let formattedCheckOut = '';
+
+  try {
+    if (checkIn && (type.toLowerCase() === 'hotel' || type.toLowerCase() === 'booking.com' || type.toLowerCase() === 'hotels.com')) {
+      formattedCheckIn = new Date(checkIn).toISOString().split('T')[0];
+    }
+  } catch (error) {
+    console.warn(`Failed to parse checkIn date: '${checkIn}'`, error);
+    // formattedCheckIn remains ''
+  }
+
+  try {
+    if (checkOut && (type.toLowerCase() === 'hotel' || type.toLowerCase() === 'booking.com' || type.toLowerCase() === 'hotels.com')) {
+      formattedCheckOut = new Date(checkOut).toISOString().split('T')[0];
+    }
+  } catch (error) {
+    console.warn(`Failed to parse checkOut date: '${checkOut}'`, error);
+    // formattedCheckOut remains ''
+  }
   
   // Prepare destination for URL (encode spaces and special characters)
   const encodedDestination = encodeURIComponent(destination || '');
-  const encodedOrigin = encodeURIComponent(checkIn || ''); // Assuming checkIn can be origin for flights
-  const encodedDest = encodeURIComponent(checkOut || ''); // Assuming checkOut can be dest for flights
 
   // Build links based on type
   switch(type.toLowerCase()) {
     case 'hotel':
-      // Generate Expedia hotel affiliate link
-      return `https://www.expedia.com/Hotel-Search?destination=${encodedDestination}&startDate=${formattedCheckIn}&endDate=${formattedCheckOut}&adults=${travelers || 1}&AFFCID=${expediaCode}`;
     case 'booking.com':
-      // Generate Booking.com hotel affiliate link
-      return `https://www.booking.com/searchresults.html?city=${encodedDestination}&aid=${bookingComCode}&checkin=${formattedCheckIn}&checkout=${formattedCheckOut}&group_adults=${travelers || 1}`;
     case 'hotels.com':
-      // Generate Hotels.com affiliate link
-      // Note: Hotels.com uses destination ID which is hard to get dynamically. Using a general search link.
-      return `https://www.hotels.com/search.do?q-destination=${encodedDestination}&q-check-in=${formattedCheckIn}&q-check-out=${formattedCheckOut}&q-rooms=1&q-room-0-adults=${travelers || 1}&affiliateCode=${hotelsComCode}`;
+      // Common logic for hotel types
+      const hotelUrlMap = {
+        'hotel': `https://www.expedia.com/Hotel-Search?destination=${encodedDestination}&startDate=${formattedCheckIn}&endDate=${formattedCheckOut}&adults=${travelers || 1}&AFFCID=${expediaCode}`,
+        'booking.com': `https://www.booking.com/searchresults.html?city=${encodedDestination}&aid=${bookingComCode}&checkin=${formattedCheckIn}&checkout=${formattedCheckOut}&group_adults=${travelers || 1}`,
+        'hotels.com': `https://www.hotels.com/search.do?q-destination=${encodedDestination}&q-check-in=${formattedCheckIn}&q-check-out=${formattedCheckOut}&q-rooms=1&q-room-0-adults=${travelers || 1}&affiliateCode=${hotelsComCode}`
+      };
+      return hotelUrlMap[type.toLowerCase()];
+
     case 'luxury':
     case 'ultraluxury':
     case 'private-jet':
-      // Generate Villiers Jets affiliate link
       return `https://www.villiersjets.com/?id=${villiersCode}`;
+
     case 'flight': // Generic flight, can point to a meta-search or preferred provider
     case 'skyscanner':
-      // Generate Skyscanner affiliate link (example, needs origin/dest codes)
-      // Assuming destination is the arrival city and origin is passed in checkIn for flights
-      return `https://www.skyscanner.com/transport/flights/${encodedOrigin}/${encodedDest}/?adults=${travelers || 1}&partnerid=YOUR_SKYSCANNER_PARTNER_ID`; // Replace with actual partner ID
+      // For flights, 'checkIn' is origin, 'checkOut' is destination
+      const encodedFlightOriginSkyscanner = encodeURIComponent(checkIn || '');
+      const encodedFlightDestSkyscanner = encodeURIComponent(checkOut || '');
+      // 'destination' (the main function param) can be a fallback if checkOut is not provided, or ignored.
+      // Using encodedFlightDestSkyscanner which is derived from checkOut, which is what injectAffiliateLinksToItineraryJSON passes as flight destination.
+      return `https://www.skyscanner.com/transport/flights/${encodedFlightOriginSkyscanner}/${encodedFlightDestSkyscanner}/?adults=${travelers || 1}&partnerid=${skyscannerPartnerId}`;
+
     case 'kiwi':
-      // Generate Kiwi affiliate link
-      return `https://www.kiwi.com/deep?from=${encodedOrigin}&to=${encodedDest}&affilid=YOUR_KIWI_AFFILIATE_ID&adults=${travelers || 1}`; // Replace with actual affiliate ID
-    case 'activity':
+      // For flights, 'checkIn' is origin, 'checkOut' is destination
+      const encodedFlightOriginKiwi = encodeURIComponent(checkIn || '');
+      const encodedFlightDestKiwi = encodeURIComponent(checkOut || '');
+      return `https://www.kiwi.com/deep?from=${encodedFlightOriginKiwi}&to=${encodedFlightDestKiwi}&affilid=${kiwiAffiliateId}&adults=${travelers || 1}`;
+
+    case 'activity': // Generic activity, can point to a general provider search
     case 'getyourguide':
-      // Generate GetYourGuide affiliate link
-      return `https://www.getyourguide.com/${encodedDestination}-l${destination.cityCode || ''}/s/?partner_id=${getYourGuideCode}`; // Assuming cityCode is available or general search
+      // For GetYourGuide, 'checkIn' is cityCode
+      const cityCodeForLink = checkIn || ''; // checkIn parameter holds the cityCode for GetYourGuide
+      // 'destination' is the main activity destination name
+      return `https://www.getyourguide.com/${encodedDestination}-l${cityCodeForLink}/s/?partner_id=${getYourGuideCode}`;
+
     case 'viator':
-      // Generate Viator affiliate link
+      // 'destination' is the main activity destination name
       return `https://www.viator.com/tours/${encodedDestination}/search?pid=${viatorCode}`;
     default:
       // Default to Expedia general link
@@ -68,14 +96,22 @@ export const generateAffiliateLink = (type, destination, checkIn, checkOut, trav
 export const injectAffiliateLinksToItineraryJSON = (itineraryJSON, tripDetails = {}) => {
   if (!itineraryJSON) return null;
 
-  const { destination, startDate, endDate, groupCount = 1 } = tripDetails;
+  const { destination, startDate, endDate, groupCount = 1, origin: tripOrigin } = tripDetails; // Ensure tripOrigin is destructured
+  console.log('injectAffiliateLinksToItineraryJSON called with itineraryJSON:', JSON.stringify(itineraryJSON, null, 2), 'and tripDetails:', JSON.stringify(tripDetails, null, 2));
 
   // Inject links into accommodations
   if (itineraryJSON.accommodations && Array.isArray(itineraryJSON.accommodations)) {
+    console.log('Processing accommodations for affiliate links. TripDetails:', JSON.stringify(tripDetails, null, 2));
     itineraryJSON.accommodations = itineraryJSON.accommodations.map(hotel => {
+      console.log('[ACCOMMODATION] hotel object from AI:', JSON.stringify(hotel, null, 2));
       const hotelNameForSearch = hotel.name || destination;
       const checkInDate = hotel.checkIn || startDate;
       const checkOutDate = hotel.checkOut || endDate;
+
+      console.log(`[ACCOMMODATION] Params for generateAffiliateLink (Expedia): type="hotel", destination="${hotelNameForSearch}", checkIn="${checkInDate}", checkOut="${checkOutDate}", travelers="${groupCount}"`);
+      console.log(`[ACCOMMODATION] Params for generateAffiliateLink (Booking.com): type="booking.com", destination="${hotelNameForSearch}", checkIn="${checkInDate}", checkOut="${checkOutDate}", travelers="${groupCount}"`);
+      console.log(`[ACCOMMODATION] Params for generateAffiliateLink (Hotels.com): type="hotels.com", destination="${hotelNameForSearch}", checkIn="${checkInDate}", checkOut="${checkOutDate}", travelers="${groupCount}"`);
+
       return {
         ...hotel,
         affiliateLinks: {
@@ -89,18 +125,22 @@ export const injectAffiliateLinksToItineraryJSON = (itineraryJSON, tripDetails =
 
   // Inject links into transportation
   if (itineraryJSON.transportation && Array.isArray(itineraryJSON.transportation)) {
+    console.log('Processing transportation for affiliate links. TripDetails:', JSON.stringify(tripDetails, null, 2));
     itineraryJSON.transportation = itineraryJSON.transportation.map(transport => {
       if (transport.type && transport.type.toLowerCase().includes('flight')) {
-        const origin = transport.from && transport.from.name ? transport.from.name.split(',')[0] : tripDetails.origin || 'city'; // Fallback to trip origin or generic
-        const dest = transport.to && transport.to.name ? transport.to.name.split(',')[0] : destination; // Fallback to trip destination
-        const departureDate = transport.departureTime || startDate;
-        
+        console.log('[FLIGHT] transport object from AI:', JSON.stringify(transport, null, 2));
+        const origin_for_link = transport.from && transport.from.name ? transport.from.name.split(',')[0] : tripOrigin || 'city';
+        const dest_for_link = transport.to && transport.to.name ? transport.to.name.split(',')[0] : destination;
+        // const departureDate = transport.departureTime || startDate; // Not directly used in these logs but good for context
+
+        console.log(`[FLIGHT] Params for generateAffiliateLink (Skyscanner): type="skyscanner", destination_for_link="${dest_for_link}", origin_for_link="${origin_for_link}", travelers="${groupCount}"`);
+        console.log(`[FLIGHT] Params for generateAffiliateLink (Kiwi): type="kiwi", destination_for_link="${dest_for_link}", origin_for_link="${origin_for_link}", travelers="${groupCount}"`);
+
         return {
           ...transport,
           affiliateLinks: {
-            // Assuming generateAffiliateLink for 'flight' can use origin/dest passed in checkIn/checkOut params
-            skyscanner: generateAffiliateLink('skyscanner', dest, origin, dest, groupCount), // Needs IATA codes ideally
-            kiwi: generateAffiliateLink('kiwi', dest, origin, dest, groupCount), // Needs IATA codes ideally
+            skyscanner: generateAffiliateLink('skyscanner', dest_for_link, origin_for_link, dest_for_link, groupCount),
+            kiwi: generateAffiliateLink('kiwi', dest_for_link, origin_for_link, dest_for_link, groupCount),
           }
         };
       }
@@ -111,16 +151,21 @@ export const injectAffiliateLinksToItineraryJSON = (itineraryJSON, tripDetails =
 
   // Inject links into activities
   if (itineraryJSON.itinerary && Array.isArray(itineraryJSON.itinerary)) {
+    console.log('Processing itinerary activities for affiliate links. TripDetails:', JSON.stringify(tripDetails, null, 2));
     itineraryJSON.itinerary = itineraryJSON.itinerary.map(day => {
       if (day.activities && Array.isArray(day.activities)) {
         day.activities = day.activities.map(activity => {
+          console.log('[ACTIVITY] activity object from AI:', JSON.stringify(activity, null, 2));
           const activityDestination = activity.location && activity.location.name ? activity.location.name : destination;
-          // For activities, cityCode might be useful if available in activity.location
-          const cityCode = activity.location && activity.location.cityCode ? activity.location.cityCode : ''; 
+          const cityCode = activity.location && activity.location.cityCode ? activity.location.cityCode : '';
+
+          console.log(`[ACTIVITY] Params for generateAffiliateLink (GetYourGuide): type="getyourguide", destination="${activityDestination}", cityCode_param="${cityCode}"`);
+          console.log(`[ACTIVITY] Params for generateAffiliateLink (Viator): type="viator", destination="${activityDestination}"`);
+
           return {
             ...activity,
             affiliateLinks: {
-              getYourGuide: generateAffiliateLink('getyourguide', activityDestination, cityCode), // Pass cityCode as 'checkIn' for now
+              getYourGuide: generateAffiliateLink('getyourguide', activityDestination, cityCode),
               viator: generateAffiliateLink('viator', activityDestination)
             }
           };
@@ -129,7 +174,7 @@ export const injectAffiliateLinksToItineraryJSON = (itineraryJSON, tripDetails =
       return day;
     });
   }
-  
+
   // Optionally, add a luxury travel option if not present
   // This part is tricky with JSON, might be better to add it as a separate object if desired.
   // For now, focusing on injecting into existing structures.

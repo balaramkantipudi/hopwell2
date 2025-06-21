@@ -216,64 +216,61 @@ const handleSubmit = async (e) => {
   setResponseError("");
   
   try {
-    // Save form data to localStorage
-    localStorage.setItem("tripFormData", JSON.stringify(formData));
-    
-    // Get the current session for authentication
     const { data: { session } } = await supabase.auth.getSession();
-    
     if (!session?.access_token) {
       throw new Error('Authentication required. Please sign in again.');
     }
-    
-    // Call the generate-itinerary API with proper authentication
-    const response = await fetch("/api/generate-itinerary", {
+
+    // ---- SINGLE API CALL: Generate Itinerary Directly ----
+    console.log("[TripPlanner] Calling /api/Trips/generate-itinerary with formData:", JSON.stringify(formData, null, 2));
+    const generateResponse = await fetch("/api/Trips/generate-itinerary", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         "Authorization": `Bearer ${session.access_token}`,
-        "x-user-id": session.user.id
       },
-      body: JSON.stringify(formData)
+      body: JSON.stringify(formData) // Send full formData
     });
-    
-    const data = await response.json();
-    
-    if (!response.ok) {
-      // Handle specific error cases
-      if (response.status === 401) {
-        throw new Error('Authentication expired. Please sign in again.');
-      } else if (response.status === 403) {
-        throw new Error(data.error || 'Not enough credits to generate itinerary');
-      } else {
-        throw new Error(data.error || `Request failed: ${response.status}`);
-      }
+
+    const generateData = await generateResponse.json();
+    console.log("[TripPlanner] Response from /api/Trips/generate-itinerary:", JSON.stringify(generateData, null, 2));
+
+    if (!generateResponse.ok) {
+      // Prioritize error message from API response, then generic message
+      const errorMessage = generateData.error ||
+                           (generateResponse.status === 401 ? 'Authentication failed. Please sign in again.' :
+                           `Failed to generate itinerary: ${generateResponse.status}`);
+      throw new Error(errorMessage);
     }
     
-    // Update the local credit count
-    if (data.creditsRemaining !== undefined) {
-      setUserCredits(data.creditsRemaining);
+    // Assuming credit deduction is handled by the API or a separate mechanism for stateless generation.
+    // For UI, we'll deduct 1 credit as per the original logic if the call succeeds.
+    setUserCredits(prev => Math.max(0, prev - 1));
+
+    if (generateData.itineraryData) {
+      localStorage.setItem("generatedItinerary", JSON.stringify(generateData.itineraryData));
+      console.log("Stored generated itinerary data to localStorage with key 'generatedItinerary'.");
     } else {
-      // Fallback if server doesn't return the new balance
-      setUserCredits(prev => Math.max(0, prev - 1));
+      console.warn("Generate itinerary response did not contain itineraryData as expected.");
+      // Consider setting an error or a specific state for the user
+      setResponseError("Failed to retrieve itinerary data from the server, though the request was successful.");
+      // Fallback to old localStorage behavior if needed, or handle error
+      localStorage.setItem("generatedItinerary", "No itinerary data returned in expected format.");
     }
     
-    // Store the generated itinerary in localStorage
-    localStorage.setItem("itineraryAndBudget", data.itinerary);
-    
-    // Redirect to the results page
+    // Redirect to the results page (which will now fetch from localStorage)
     router.push("/plan-my-trip/results");
     
   } catch (error) {
     console.error("Error generating itinerary:", error);
     
-    // Handle authentication errors specifically
-    if (error.message.includes('Authentication') || error.message.includes('sign in')) {
+    // Handle authentication errors specifically for redirect
+    if (error.message && (error.message.includes('Authentication') || error.message.includes('sign in'))) {
       setResponseError("Authentication required. Please sign in again.");
-      setTimeout(() => {
-        router.push('/auth/signin?redirect=trip-planner');
-      }, 2000);
+      // Optional: Redirect to sign-in after a short delay
+      // setTimeout(() => router.push('/auth/signin?redirect=trip-planner'), 2000);
     } else {
+      // Set a generic error message for other types of errors
       setResponseError(error.message || "Failed to generate itinerary. Please try again.");
     }
   } finally {

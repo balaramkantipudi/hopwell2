@@ -9,42 +9,64 @@ export default async function handler(req, res) {
   }
 
   try {
-    // Get user from Supabase session
-    let session, authError;
+    // JWT-based authentication
+    let user;
     try {
-      const sessionResult = await supabase.auth.getSession();
-      session = sessionResult.data.session;
-      authError = sessionResult.error;
-      if (authError) throw authError;
-      if (!session) throw new Error('Not authenticated');
-    } catch (error) {
-      console.error('Supabase auth error:', error);
-      return res.status(401).json({ error: 'Not authenticated' });
-    }
-    
-    const userId = session.user.id;
-    const { tripId } = req.body;
-    
-    if (!tripId) {
-      return res.status(400).json({ error: 'Trip ID is required' });
-    }
+      const authHeader = req.headers.authorization;
+      if (!authHeader || !authHeader.startsWith('Bearer ')) {
+        console.error('Authorization header missing or malformed');
+        return res.status(401).json({ error: 'Authorization header missing or malformed' });
+      }
+      const jwt = authHeader.split(' ')[1];
+      if (!jwt) {
+        console.error('Token not found in Authorization header');
+        return res.status(401).json({ error: 'Token not found in Authorization header' });
+      }
 
-    // Find the trip in Supabase
-    let trip;
-    try {
-      const { data: tripData, error: tripError } = await supabase
-        .from('trips')
-        .select('*')
-        .eq('id', tripId)
-        .eq('user_id', userId)
-        .single();
-      if (tripError) throw tripError;
-      if (!tripData) throw new Error('Trip not found');
-      trip = tripData;
+      const { data: userData, error: userError } = await supabase.auth.getUser(jwt);
+
+      if (userError) {
+        console.error('Supabase user auth error (getUser):', userError.message);
+        throw new Error(userError.message || 'Failed to authenticate user from token');
+      }
+      if (!userData || !userData.user) {
+        console.error('Invalid or expired token: No user data returned.');
+        throw new Error('Invalid or expired token');
+      }
+      user = userData.user;
     } catch (error) {
-      console.error('Supabase error fetching trip:', error.message);
-      return res.status(500).json({ error: `Database error: ${error.message || 'Failed to fetch trip details.'}` });
+      console.error('JWT Authentication error:', error.message);
+      return res.status(401).json({ error: error.message || 'Invalid or expired token' });
     }
+    
+    const userId = user.id; // Retain for potential logging or future credit use
+
+    // 1. Change Request Body Expectation & Basic Validation
+    const {
+      destination,
+      startDate: startDateString, // Renaming to avoid conflict with Date object
+      endDate: endDateString,     // Renaming to avoid conflict with Date object
+      budget,
+      interests, // Expected as an array
+      groupType,
+      groupCount,
+      origin,
+      transportMode,
+      hotelStyle,
+      cuisine,
+      // theme, // This will be derived from interests
+      priority
+    } = req.body;
+
+    if (!destination) {
+      return res.status(400).json({ error: 'Destination is required' });
+    }
+    if (!startDateString || !endDateString) {
+      return res.status(400).json({ error: 'Start date and end date are required' });
+    }
+    // Add more validations as needed
+
+    // 2. Remove Database Fetch (already done by removing the block)
 
     // Initialize Gemini
     let model;
@@ -56,40 +78,45 @@ export default async function handler(req, res) {
         return res.status(500).json({ error: "AI provider setup failed." });
     }
 
-    // Format trip data for Gemini
+    // 3. Construct tripInfo from req.body
+    const themeStringFromInterests = (Array.isArray(interests) && interests.length > 0 ? interests.join(', ') : '');
+
     const tripInfo = {
-      destination: trip.destination,
-      origin: trip.origin,
-      transportMode: trip.transportMode,
-      startDate: trip.startDate,
-      endDate: trip.endDate,
-      hotelStyle: trip.hotelStyle,
-      cuisine: trip.cuisine,
-      theme: trip.theme,
-      groupType: trip.groupType,
-      groupCount: trip.groupCount,
-      budget: trip.budget,
-      priority: trip.priority,
+      destination,
+      origin,
+      transportMode,
+      startDate: startDateString,
+      endDate: endDateString,
+      hotelStyle,
+      cuisine,
+      theme: themeStringFromInterests, // Use processed interests for theme
+      groupType,
+      groupCount,
+      budget,
+      priority,
     };
 
-    // Calculate trip duration in days
-    const startDate = new Date(trip.startDate);
-    const endDate = new Date(trip.endDate);
-    const tripDuration = Math.ceil((endDate - startDate) / (1000 * 60 * 60 * 24));
+    // 5. Calculate tripDuration from req.body
+    const startDateObj = new Date(startDateString);
+    const endDateObj = new Date(endDateString);
+    const tripDuration = Math.ceil((endDateObj - startDateObj) / (1000 * 60 * 60 * 24));
+    if (isNaN(tripDuration) || tripDuration < 0) {
+        return res.status(400).json({ error: 'Invalid start or end date, resulting in invalid trip duration.' });
+    }
 
     // Create prompt for Gemini
     const prompt = `
       Create a detailed travel itinerary with the following preferences:
       - Destination: ${tripInfo.destination}
-      - Origin: ${tripInfo.origin}
-      - Mode of Transport: ${tripInfo.transportMode}
-      - Trip Duration: ${tripDuration} days (from ${startDate.toLocaleDateString()} to ${endDate.toLocaleDateString()})
-      - Accommodation Style: ${tripInfo.hotelStyle}
-      - Cuisine Preferences: ${tripInfo.cuisine}
-      - Trip Theme: ${tripInfo.theme}
-      - Group Type: ${tripInfo.groupType} (${tripInfo.groupCount} people)
-      - Budget per Person: $${tripInfo.budget}
-      - Priority: ${tripInfo.priority}
+      - Origin: ${tripInfo.origin || 'Not specified'}
+      - Mode of Transport: ${tripInfo.transportMode || 'Any'}
+      - Trip Duration: ${tripDuration} days (from ${startDateObj.toLocaleDateString()} to ${endDateObj.toLocaleDateString()})
+      - Accommodation Style: ${tripInfo.hotelStyle || 'Any'}
+      - Cuisine Preferences: ${tripInfo.cuisine || 'Any'}
+      - Trip Theme: ${tripInfo.theme || 'General'}
+      - Group Type: ${tripInfo.groupType || 'Any'} (${tripInfo.groupCount || 1} people)
+      - Budget per Person: $${tripInfo.budget || 'Moderate'}
+      - Priority: ${tripInfo.priority || 'Balanced'}
 
       Please provide:
       1. A day-by-day itinerary with specific activities, times, and locations
@@ -182,45 +209,29 @@ export default async function handler(req, res) {
       return res.status(500).json({ error: 'Failed to parse itinerary data from AI provider. Raw output logged.' });
     }
     
-  // Inject affiliate links
+    // 4. Construct tripDetailsForAffiliates from req.body
   const tripDetailsForAffiliates = {
-    destination: trip.destination,
-    origin: trip.origin, // Pass origin
-    startDate: trip.startDate,
-    endDate: trip.endDate,
-    groupCount: trip.groupCount
+    destination,
+    origin,
+    startDate: startDateString,
+    endDate: endDateString,
+    groupCount
   };
+  console.log('[generate-itinerary] Passing to injectAffiliateLinksToItineraryJSON - itineraryJSON (first 200 chars):', JSON.stringify(itineraryJSON).substring(0, 200));
+  console.log('[generate-itinerary] Passing to injectAffiliateLinksToItineraryJSON - tripDetailsForAffiliates:', JSON.stringify(tripDetailsForAffiliates, null, 2));
   const enhancedItinerary = injectAffiliateLinksToItineraryJSON(itineraryJSON, tripDetailsForAffiliates);
   
-  let updatedTrip;
-  try {
-    const { data, error: updateError } = await supabase
-        .from('trips')
-        .update({
-          itinerary: enhancedItinerary.itinerary,
-          accommodations: enhancedItinerary.accommodations,
-          transportation: enhancedItinerary.transportation,
-          total_cost: enhancedItinerary.totalCost,
-          status: 'generated',
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', tripId)
-        .select(); // Ensure select() is called to get the updated record
-      if (updateError) throw updateError;
-      if (!data || data.length === 0) throw new Error('Failed to retrieve updated trip data.');
-      updatedTrip = data[0];
-  } catch (error) {
-    console.error('Supabase error updating trip:', error.message);
-    return res.status(500).json({ error: `Database error: ${error.message || 'Failed to update trip.'}` });
-  }
-    
+    // 6. Remove Database Update (already done by removing the block)
+
+    // 7. Modify Return Value
     return res.status(200).json({
       success: true,
       message: 'Itinerary generated successfully',
-      trip: updatedTrip
+      itineraryData: enhancedItinerary // Return the generated itinerary directly
     });
   } catch (error) {
-    console.error('Generate itinerary error - Unhandled:', error.message, error.stack);
+    // Log specific user ID if available from auth, for better tracking
+    console.error(`Generate itinerary error for user ${userId || 'Unknown'}:`, error.message, error.stack);
     return res.status(500).json({ error: 'An unexpected server error occurred.' });
   }
 }
